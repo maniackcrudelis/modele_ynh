@@ -1,0 +1,58 @@
+#!/bin/bash
+
+source .fonctions	# Charge les fonctions génériques habituellement utilisées dans le script
+
+# Récupère les infos de l'application.
+YNH_VERSION	# Récupère le numéro de version de Yunohost.
+if [ $ynh_version = "2.4" ]; then
+	app=$YNH_APP_INSTANCE_NAME
+
+	# Source app helpers
+	. /usr/share/yunohost/helpers
+else
+	app=app_name
+fi
+domain=$(sudo yunohost app setting $app domain)
+path=$(sudo yunohost app setting $app path)
+admin=$(sudo yunohost app setting $app admin)
+is_public=$(sudo yunohost app setting $app is_public)
+final_path=$(sudo yunohost app setting $app final_path)
+port=$(sudo yunohost app setting $app port)
+
+CHECK_PATH	# Vérifie et corrige la syntaxe du path.
+
+SETUP_SOURCE "APP_NAME.tar.gz"	# Télécharge la source, décompresse et copie dans $final_path
+
+# Et copie le fichier de config nginx
+sudo cp ../conf/nginx.conf /etc/nginx/conf.d/$domain.d/$app.conf
+
+# Modifie les variables dans le fichier de configuration nginx
+sudo sed -i "s@__PATHTOCHANGE__@$path@g" /etc/nginx/conf.d/$domain.d/$app.conf
+sudo sed -i "s@__FINALPATH__@$final_path@g" /etc/nginx/conf.d/$domain.d/$app.conf
+sudo sed -i "s@__NAMETOCHANGE__@$app@g" /etc/nginx/conf.d/$domain.d/$app.conf
+sudo sed -i "s@__PORT__@$port@g" /etc/nginx/conf.d/$domain.d/$app.conf
+
+POOL_FPM	# Créer le fichier de configuration du pool php-fpm et le configure.
+
+
+###
+#! INSTALLATION SPÉCIFIQUE DU PAQUET
+
+# Copie ou modification d'un fichier de config
+CHECK_MD5_CONFIG "CONFIG_FILE" "$final_path/CONFIG_FILE"	# Créé un backup du fichier de config si il a été modifié.
+STORE_MD5_CONFIG "CONFIG_FILE" "$final_path/CONFIG_FILE"	# Réenregistre la somme de contrôle du fichier de config
+###
+
+
+# Configure les droits d'accès au fichiers
+# -rw-r--r-- sur les fichiers
+sudo find $final_path -type f -print0 | xargs -0 sudo chmod 644
+# drwxr-xr-x sur les dossiers
+sudo find $final_path -type d -print0 | xargs -0 sudo chmod 755
+# Les fichiers appartiennent à root
+sudo chown -R root: $final_path
+
+# Recharge la configuration Nginx
+sudo service nginx reload
+# Régénère la configuration de SSOwat
+sudo yunohost app ssowatconf

@@ -1,0 +1,67 @@
+#!/bin/bash
+
+source .fonctions	# Charge les fonctions génériques habituellement utilisées dans le script
+
+# Récupère les infos de l'application.
+YNH_VERSION	# Récupère le numéro de version de Yunohost.
+if [ $ynh_version = "2.4" ]; then
+	app=$YNH_APP_INSTANCE_NAME
+
+	# Source app helpers
+	. /usr/share/yunohost/helpers
+else
+	app=APP_NAME
+	MYSQL_ROOT_PWD_FILE=$(sudo cat /etc/yunohost/mysql)
+fi
+domain=$(sudo yunohost app setting $app domain)
+port=$(sudo yunohost app setting $app port)
+
+
+# Arrêt du service
+if [ -e "/etc/init.d/NAME_APP" ]; then
+	echo "Delete init.d script"
+	sudo service NAME_APP stop
+	sudo rm "/etc/init.d/NAME_APP"
+	sudo rm "/etc/default/NAME_APP"
+	sudo update-rc.d -f NAME_APP remove
+fi
+
+# Retire le service du monitoring de Yunohost.
+if sudo yunohost service status | grep -q NAME_APP	# Test l'existence du service dans Yunohost
+then
+	echo "Remove NAME_APP service"
+	sudo yunohost service remove NAME_APP
+fi
+
+REMOVE_BDD	# Suppression de la base de donnée et de l'utilisateur associé.
+
+REMOVE_APP_DIR	# Suppression du dossier de l'application
+
+REMOVE_NGINX_CONF	# Suppression de la configuration nginx
+
+REMOVE_FPM_CONF	# Suppression de la configuration du pool php-fpm
+
+REMOVE_LOGROTATE_CONF	# Suppression de la configuration de logrotate
+
+if sudo yunohost firewall list | grep -q "\- $port$"
+then
+	echo "Close port $port"
+	sudo yunohost firewall disallow TCP $port > /dev/null
+fi
+
+# Suppression d'un dossier
+if [ -e "/etc/$app/" ]; then
+	echo "Delete dir"
+	sudo rm -r "/etc/$app/"
+fi
+
+# Suppression des log
+if [ -e "/var/log/$app/" ]; then
+	echo "Delete log"
+	sudo rm -r "/var/log/$app/"
+fi
+
+# Régénère la configuration de SSOwat
+sudo yunohost app ssowatconf
+
+echo -e "\e[0m"	# Restore normal color

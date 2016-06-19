@@ -1,0 +1,44 @@
+#!/bin/bash
+
+source .fonctions	# Charge les fonctions génériques habituellement utilisées dans le script
+
+# Récupère les infos de l'application.
+YNH_VERSION	# Récupère le numéro de version de Yunohost.
+if [ $ynh_version = "2.4" ]; then
+	app=$YNH_APP_INSTANCE_NAME
+else
+	app=APP_NAME
+fi
+final_path=$(sudo yunohost app setting $app final_path)
+domain=$(sudo yunohost app setting $app domain)
+
+
+# The parameter $1 is the backup directory location
+# which will be compressed afterward
+backup_dir=$1/apps/$app
+sudo mkdir -p "$backup_dir"
+
+# Backup sources & data
+sudo cp -a $final_path/. $backup_dir/sources
+
+# Copy Nginx and YunoHost parameters to make the script "standalone"
+sudo cp -a /etc/yunohost/apps/$app/. $backup_dir/yunohost
+sudo cp -a /etc/nginx/conf.d/$domain.d/$app.conf $backup_dir/nginx.conf
+
+# Copy dedicated php-fpm process to backup folder
+sudo cp -a /etc/php5/fpm/pool.d/$app.conf $backup_dir/php-fpm.conf
+sudo cp -a /etc/php5/fpm/conf.d/20-$app.ini $backup_dir/php-fpm.ini
+
+
+
+# Copie du fichier du cron
+sudo cp -a /etc/cron.d/$app $backup_dir/cron_$app
+
+# Copie la configuration de logrotate
+sudo cp -a /etc/logrotate.d/$app $backup_dir/logrotate
+
+# Copy APP configuration
+sudo cp -a /etc/$app/. $backup_dir/etc
+
+# Copie des fichiers spécifiques à l'application
+# ...

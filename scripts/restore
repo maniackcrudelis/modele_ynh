@@ -1,0 +1,60 @@
+#!/bin/bash
+
+source .fonctions	# Charge les fonctions génériques habituellement utilisées dans le script
+
+# Récupère les infos de l'application.
+YNH_VERSION	# Récupère le numéro de version de Yunohost.
+if [ $ynh_version = "2.4" ]; then
+	app=$YNH_APP_INSTANCE_NAME
+else
+	app=APP_NAME
+fi
+domain=$(sudo yunohost app setting $app domain)
+path=$(sudo yunohost app setting $app path)
+final_path=$(sudo yunohost app setting $app final_path)
+
+# Check domain/path availability
+sudo yunohost app checkurl $domain$path -a $app
+if [[ ! $? -eq 0 ]]; then
+    echo "There is already an app on this URL : $domain$path"
+    exit 1
+fi
+
+if [ -d $final_path ]; then
+    echo "There is already a directory: $final_path "
+    exit 1
+fi
+sudo cp -a "$backup_dir/sources/." $final_path
+
+# Restore Nginx and YunoHost parameters
+sudo cp -a $backup_dir/yunohost/. /etc/yunohost/apps/$app
+conf=/etc/nginx/conf.d/$domain.d/$app.conf
+if [ -f $conf ]; then
+    echo "There is already a nginx conf file at this path: $conf "
+    exit 1
+fi
+sudo cp -a $backup_dir/nginx.conf $conf
+# Reload webserver
+sudo service nginx reload
+
+# Copy dedicated php-fpm process from backup folder to the right location
+sudo cp -a $backup_dir/php-fpm.conf /etc/php5/fpm/pool.d/$app.conf
+sudo cp -a $backup_dir/php-fpm.ini /etc/php5/fpm/conf.d/20-$app.ini
+# And Reload service
+sudo service php5-fpm reload
+
+
+# Restauration des fichiers spécifiques à l'application
+# ...
+
+# Restaure la configuration de logrotate
+sudo cp -a $backup_dir/logrotate /etc/logrotate.d/$app
+
+# Restore APP configuration
+sudo cp -a $backup_dir/etc/. /etc/$app
+
+# Ouvre le port dans le firewall
+sudo yunohost firewall allow --no-upnp TCP $port > /dev/null 2>&1
+
+# Ajoute le service au monitoring de Yunohost.
+sudo yunohost service add APP --log "/var/log/APP.log"
