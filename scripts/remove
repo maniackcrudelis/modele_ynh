@@ -8,7 +8,7 @@ if [ $ynh_version = "2.4" ]; then
 	app=$YNH_APP_INSTANCE_NAME
 
 	# Source app helpers
-	. /usr/share/yunohost/helpers
+	source /usr/share/yunohost/helpers
 else
 	app=APP_NAME
 	MYSQL_ROOT_PWD_FILE=$(sudo cat /etc/yunohost/mysql)
@@ -33,7 +33,7 @@ then
 	sudo yunohost service remove NAME_APP
 fi
 
-REMOVE_BDD	# Suppression de la base de donnée et de l'utilisateur associé.
+REMOVE_BDD $app	# Suppression de la base de donnée et de l'utilisateur associé.
 
 REMOVE_APP_DIR	# Suppression du dossier de l'application
 
@@ -49,6 +49,12 @@ then
 	sudo yunohost firewall disallow TCP $port > /dev/null
 fi
 
+# Retirer le cron
+if [ -e "/etc/cron.d/$app" ]; then
+	echo "Delete cron"
+	sudo rm "/etc/cron.d/$app"
+fi
+
 # Suppression d'un dossier
 if [ -e "/etc/$app/" ]; then
 	echo "Delete dir"
@@ -59,6 +65,12 @@ fi
 if [ -e "/var/log/$app/" ]; then
 	echo "Delete log"
 	sudo rm -r "/var/log/$app/"
+fi
+
+# Supprime l'utilisateur
+if grep -q "^USER:" /etc/passwd	# Test l'existence de l'utilisateur
+then
+	sudo userdel USER
 fi
 
 # Régénère la configuration de SSOwat

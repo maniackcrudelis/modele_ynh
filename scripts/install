@@ -25,7 +25,7 @@ then
 	app=$YNH_APP_INSTANCE_NAME
 
 	# Source app helpers
-	. /usr/share/yunohost/helpers
+	source /usr/share/yunohost/helpers
 else
 	domain=$1
 	path=$2
@@ -58,7 +58,7 @@ sudo yunohost app setting $app admin -v $admin
 sudo yunohost app setting $app is_public -v $is_public
 sudo yunohost app setting $app port -v $port
 
-GENERATE_DB	# Créer une base de données et un utilisateur dédié au nom de l'app.
+GENERATE_DB $app	# Créer une base de données et un utilisateur dédié au nom de l'app.
 
 
 # Créer le repertoire de destination et stocke son emplacement.
