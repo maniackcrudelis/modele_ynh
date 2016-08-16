@@ -8,9 +8,6 @@ CLEAN_SETUP () {
 # Nettoyage des résidus d'installation non pris en charge par le script remove.
 # Pas de nettoyage supplémentaire nécessaire ici...
 	echo ""
-# OU
-	# Clean hosts
-	sudo sed -i '/#APP_NAME/d' /etc/hosts
 }
 TRAP_ON	# Active trap pour arrêter le script si une erreur est détectée.
 
@@ -86,7 +83,6 @@ POOL_FPM	# Créer le fichier de configuration du pool php-fpm et le configure.
 # Rend la page d'install publique pour curl
 sudo yunohost app setting $app skipped_uris -v "/"
 sudo yunohost app ssowatconf
-echo "127.0.0.1 $domain #APP_NAME" | sudo tee -a /etc/hosts
 
 # Copie ou modification d'un fichier de config
 STORE_MD5_CONFIG "CONFIG_FILE" "$final_path/CONFIG_FILE"	# Enregistre la somme de contrôle du fichier de config
@@ -109,9 +105,6 @@ sudo cp ../conf/logrotate /etc/logrotate.d/$app
 
 # Ajoute le service au monitoring de Yunohost.
 sudo yunohost service add NAME_INIT.D --log "/var/log/FICHIER.log"
-
-# Clean hosts
-sudo sed -i '/#APP_NAME/d' /etc/hosts
 
 if [ "$is_public" = "No" ];
 then	# Retire l'accès public
