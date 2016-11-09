@@ -3,15 +3,11 @@
 source .fonctions	# Charge les fonctions génériques habituellement utilisées dans le script
 
 # Récupère les infos de l'application.
-YNH_VERSION	# Récupère le numéro de version de Yunohost.
-if [ $ynh_version = "2.4" ]; then
-	app=$YNH_APP_INSTANCE_NAME
+app=$YNH_APP_INSTANCE_NAME
 
-	# Source app helpers
-	source /usr/share/yunohost/helpers
-else
-	app=app_name
-fi
+# Source app helpers
+source /usr/share/yunohost/helpers
+
 domain=$(sudo yunohost app setting $app domain)
 path=$(sudo yunohost app setting $app path)
 admin=$(sudo yunohost app setting $app admin)

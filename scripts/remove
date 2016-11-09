@@ -3,16 +3,11 @@
 source .fonctions	# Charge les fonctions génériques habituellement utilisées dans le script
 
 # Récupère les infos de l'application.
-YNH_VERSION	# Récupère le numéro de version de Yunohost.
-if [ $ynh_version = "2.4" ]; then
-	app=$YNH_APP_INSTANCE_NAME
+app=$YNH_APP_INSTANCE_NAME
 
-	# Source app helpers
-	source /usr/share/yunohost/helpers
-else
-	app=APP_NAME
-	MYSQL_ROOT_PWD_FILE=$(sudo cat /etc/yunohost/mysql)
-fi
+# Source app helpers
+source /usr/share/yunohost/helpers
+
 domain=$(sudo yunohost app setting $app domain)
 port=$(sudo yunohost app setting $app port)
 
@@ -35,7 +30,7 @@ fi
 
 REMOVE_BDD $app	# Suppression de la base de donnée et de l'utilisateur associé.
 
-REMOVE_APP_DIR	# Suppression du dossier de l'application
+SECURE_REMOVE '/var/www/$app'	# Suppression du dossier de l'application
 
 REMOVE_NGINX_CONF	# Suppression de la configuration nginx
 
@@ -56,16 +51,10 @@ if [ -e "/etc/cron.d/$app" ]; then
 fi
 
 # Suppression d'un dossier
-if [ -e "/etc/$app/" ]; then
-	echo "Delete dir"
-	sudo rm -r "/etc/$app/"
-fi
+SECURE_REMOVE '/etc/$app/'
 
 # Suppression des log
-if [ -e "/var/log/$app/" ]; then
-	echo "Delete log"
-	sudo rm -r "/var/log/$app/"
-fi
+SECURE_REMOVE '/var/log/$app/'
 
 # Supprime l'utilisateur
 if grep -q "^USER:" /etc/passwd	# Test l'existence de l'utilisateur
