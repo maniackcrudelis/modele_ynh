@@ -8,8 +8,8 @@ app=$YNH_APP_INSTANCE_NAME
 # Source app helpers
 source /usr/share/yunohost/helpers
 
-domain=$(sudo yunohost app setting $app domain)
-port=$(sudo yunohost app setting $app port)
+domain=$(ynh_app_setting_get $app domain)
+port=$(ynh_app_setting_get $app port)
 
 
 # Arrêt du service
@@ -57,7 +57,7 @@ SECURE_REMOVE '/etc/$app/'
 SECURE_REMOVE '/var/log/$app/'
 
 # Supprime l'utilisateur
-if grep -q "^USER:" /etc/passwd	# Test l'existence de l'utilisateur
+if ynh_system_user_exists "USER"	# Test l'existence de l'utilisateur
 then
 	sudo userdel USER
 fi
