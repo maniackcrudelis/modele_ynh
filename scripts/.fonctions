@@ -31,6 +31,20 @@ TRAP_ON () {	# Activate signal capture
 	trap EXIT_PROPERLY EXIT	# Capturing exit signals on shell script
 }
 
+# Ignore the yunohost-cli log to prevent errors with conditionals commands
+# usage: NO_LOG COMMAND
+# Simply duplicate the log, execute the yunohost command and replace the log without the result of this command
+# It's a very badly hack...
+# Petite copie perso à mon usage ;)
+NO_LOG() {
+  ynh_cli_log=/var/log/yunohost/yunohost-cli.log
+  sudo cp -a ${ynh_cli_log} ${ynh_cli_log}-move
+  eval $@
+  exit_code=$?
+  sudo mv ${ynh_cli_log}-move ${ynh_cli_log}
+  return $?
+}
+
 CHECK_USER () {	# Vérifie la validité de l'user admin
 # $1 = Variable de l'user admin.
 	ynh_user_exists "$1" || (echo "Wrong admin" >&2 && false)
