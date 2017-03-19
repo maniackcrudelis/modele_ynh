@@ -1,64 +1,137 @@
 #!/bin/bash
 
-# Récupère les infos de l'application.
-app=$YNH_APP_INSTANCE_NAME
+#=================================================
+# GENERIC STARTING
+#=================================================
+# MANAGE FAILURE OF THE SCRIPT
+#=================================================
 
-# Source app helpers
+# Exit on command errors and treat unset variables as an error
+set -eu
+
+#=================================================
+# IMPORT GENERIC HELPERS
+#=================================================
+
+if [ ! -e _common.sh ]; then
+	# Rapatrie le fichier de fonctions si il n'est pas dans le dossier courant
+	sudo cp ../settings/scripts/_common.sh ./_common.sh
+	sudo chmod a+rx _common.sh
+fi
+source _common.sh
 source /usr/share/yunohost/helpers
 
+#=================================================
+# LOAD SETTINGS
+#=================================================
+
+app=$YNH_APP_INSTANCE_NAME
+
 domain=$(ynh_app_setting_get $app domain)
-path=$(ynh_app_setting_get $app path)
+path_url=$(ynh_app_setting_get $app path)
 final_path=$(ynh_app_setting_get $app final_path)
+db_name=$(ynh_app_setting_get $app db_name)
 
-if [ -d $final_path ]; then
-    echo "There is already a directory: $final_path " >&2
-    exit 1
-fi
+#=================================================
+# CHECK IF THE APP CAN BE RESTORED
+#=================================================
 
-# The parameter $1 is the uncompressed restore directory location
-backup_dir=$1/apps/$app
+sudo yunohost app checkurl "${domain}${path_url}" -a "$app" \
+	|| ynh_die "Path not available: ${domain}${path_url}"
+test ! -d $final_path \
+	|| ynh_die "There is already a directory: $final_path "
 
-# Restore Nginx
+#=================================================
+# STANDARD RESTORE STEPS
+#=================================================
+# RESTORE OF THE NGINX CONFIGURATION
+#=================================================
+
 conf=/etc/nginx/conf.d/$domain.d/$app.conf
 if [ -f $conf ]; then
-    echo "There is already a nginx conf file at this path: $conf " >&2
-    exit 1
+	ynh_die "There is already a nginx conf file at this path: $conf "
 fi
-sudo cp -a $backup_dir/nginx.conf $conf
+sudo cp -a ./nginx.conf $conf
 
-# Restore YunoHost parameters
-sudo cp -a $backup_dir/yunohost/. /etc/yunohost/apps/$app
+#=================================================
+# RESTORE OF THE MAIN DIR OF THE APP
+#=================================================
 
-# Restore sources & data
-sudo cp -a "$backup_dir/sources/." $final_path
+sudo cp -a ./sources/. $final_path
 
-# Créer la base de donnée et la restaure
+#=================================================
+# RESTORE OF THE SQL BDD
+#=================================================
+
 db_pwd=$(ynh_app_setting_get $app mysqlpwd)
-db_user=$app
-ynh_mysql_create_db $db_user $db_user $db_pwd
-mysql --debug-check -u $db_user -p$db_pwd $db_user < ${backup_dir}/db.sql
+ynh_mysql_create_db $db_name $db_name $db_pwd
+ynh_mysql_connect_as $db_name $db_pwd $db_name < ./db.sql
 
-# Copy dedicated php-fpm process from backup folder to the right location
-sudo cp -a $backup_dir/php-fpm.conf /etc/php5/fpm/pool.d/$app.conf
-sudo cp -a $backup_dir/php-fpm.ini /etc/php5/fpm/conf.d/20-$app.ini
+#=================================================
+# RECREATE OF THE DEDICATED USER
+#=================================================
 
-# Restauration des fichiers spécifiques à l'application
-# ...
+ynh_system_user_create $app	# Recreate the dedicated user, if not exist
 
-# Restaure la configuration de logrotate
-sudo cp -a $backup_dir/logrotate /etc/logrotate.d/$app
+#=================================================
+# RESTORE USER RIGHTS
+#=================================================
 
-# Restore APP configuration
-sudo cp -a $backup_dir/etc/. /etc/$app
+# Les fichiers appartiennent à root
+sudo chown -R root: $final_path
 
-# Ouvre le port dans le firewall
-sudo yunohost firewall allow --no-upnp TCP $port > /dev/null 2>&1
+#=================================================
+# RESTORE OF THE PHP-FPM CONFIGURATION
+#=================================================
 
-# Ajoute le service au monitoring de Yunohost.
-sudo yunohost service add APP --log "/var/log/APP.log"
+sudo cp -a ./php-fpm.conf /etc/php5/fpm/pool.d/$app.conf
+sudo cp -a ./php-fpm.ini /etc/php5/fpm/conf.d/20-$app.ini
 
-# And Reload service
-sudo service php5-fpm reload
+#=================================================
+# SPECIFIC RESTORE
+#=================================================
+# REINSTALL DEPENDENCIES
+#=================================================
 
-# Reload webserver
-sudo service nginx reload
+ynh_install_app_dependencies deb1 deb2
+
+#=================================================
+# ENABLE SERVICE IN ADMIN PANEL
+#=================================================
+
+sudo yunohost service add $app --log "/var/log/$app/APP.log"
+
+#=================================================
+# RESTORE SYSTEMD
+#=================================================
+
+sudo cp -a $backup_dir/$app.service /etc/systemd/system/$app.service
+## Démarrage auto du service
+sudo systemctl enable $app.service
+
+#=================================================
+# RESTORE OF THE CRON FILE
+#=================================================
+
+sudo cp -a "cron" "/etc/cron.d/$app"
+
+#=================================================
+# BACKUP OF THE LOGROTATE CONFIGURATION
+#=================================================
+
+sudo cp -a ./logrotate /etc/logrotate.d/$app
+
+#=================================================
+# RESTORE THE APP CONFIGURATION
+#=================================================
+
+sudo cp -a ./etc /etc/$app
+
+#=================================================
+# GENERIC FINALISATION
+#=================================================
+# RELOAD NGINX AND PHP-FPM
+#=================================================
+
+sudo systemctl reload php5-fpm
+sudo systemctl reload nginx

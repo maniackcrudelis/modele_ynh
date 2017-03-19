@@ -1,54 +1,147 @@
 #!/bin/bash
 
-source .fonctions	# Charge les fonctions génériques habituellement utilisées dans le script
+#=================================================
+# GENERIC STARTING
+#=================================================
+# IMPORT GENERIC HELPERS
+#=================================================
 
-# Récupère les infos de l'application.
-app=$YNH_APP_INSTANCE_NAME
-
-# Source app helpers
+source _common.sh
 source /usr/share/yunohost/helpers
 
+#=================================================
+# LOAD SETTINGS
+#=================================================
+
+app=$YNH_APP_INSTANCE_NAME
+
 domain=$(ynh_app_setting_get $app domain)
-path=$(ynh_app_setting_get $app path)
+path_url=$(ynh_app_setting_get $app path)
 admin=$(ynh_app_setting_get $app admin)
 is_public=$(ynh_app_setting_get $app is_public)
 final_path=$(ynh_app_setting_get $app final_path)
 port=$(ynh_app_setting_get $app port)
+db_name=$(ynh_app_setting_get $app db_name)
 
-CHECK_PATH	# Vérifie et corrige la syntaxe du path.
+#=================================================
+# FIX OLD THINGS
+#=================================================
 
-SETUP_SOURCE "APP_NAME.tar.gz"	# Télécharge la source, décompresse et copie dans $final_path
+if [ "$is_public" = "Yes" ]; then
+	ynh_app_setting_set $app is_public 1	# Fixe is_public en booléen
+	is_public=1
+elif [ "$is_public" = "No" ]; then
+	ynh_app_setting_set $app is_public 0
+	is_public=0
+fi
 
-# Et copie le fichier de config nginx
+if [ -z $db_name ]; then	# Si db_name n'est pas renseigné dans app setting
+	db_name=$(ynh_make_valid_dbid $app)
+	ynh_app_setting_set $app db_name $db_name
+fi
+
+#=================================================
+# BACKUP BEFORE UPGRADE THEN ACTIVE TRAP
+#=================================================
+
+BACKUP_BEFORE_UPGRADE	# Backup the current version of the app
+ynh_clean_setup () {
+	BACKUP_FAIL_UPGRADE	# restore it if the upgrade fails
+}
+ynh_abort_if_errors	# Active trap pour arrêter le script si une erreur est détectée.
+
+#=================================================
+# CHECK THE PATH
+#=================================================
+
+path_url=$(ynh_normalize_url_path $path_url)	# Vérifie et corrige la syntaxe du path.
+
+#=================================================
+# STANDARD UPGRADE STEPS
+#=================================================
+# DOWNLOAD, CHECK AND UNPACK SOURCE
+#=================================================
+
+SETUP_SOURCE	# Télécharge la source, décompresse et copie dans $final_path
+
+#=================================================
+# NGINX CONFIGURATION
+#=================================================
+
+# Copie le fichier de config nginx
 sudo cp ../conf/nginx.conf /etc/nginx/conf.d/$domain.d/$app.conf
-
 # Modifie les variables dans le fichier de configuration nginx
-sudo sed -i "s@__PATHTOCHANGE__@$path@g" /etc/nginx/conf.d/$domain.d/$app.conf
+sudo sed -i "s@__PATHTOCHANGE__@$path_url@g" /etc/nginx/conf.d/$domain.d/$app.conf
 sudo sed -i "s@__FINALPATH__@$final_path@g" /etc/nginx/conf.d/$domain.d/$app.conf
 sudo sed -i "s@__NAMETOCHANGE__@$app@g" /etc/nginx/conf.d/$domain.d/$app.conf
 sudo sed -i "s@__PORT__@$port@g" /etc/nginx/conf.d/$domain.d/$app.conf
 
+#=================================================
+# CREATE DEDICATED USER
+#=================================================
+
+ynh_system_user_create $app	# Create the dedicated user, if not exist
+
+#=================================================
+# PHP-FPM CONFIGURATION
+#=================================================
+
 POOL_FPM	# Créer le fichier de configuration du pool php-fpm et le configure.
 
-
-###
-#! INSTALLATION SPÉCIFIQUE DU PAQUET
+#=================================================
+# SPECIFIC UPGRADE
+#=================================================
+# ...
+#=================================================
 
 # Copie ou modification d'un fichier de config
 CHECK_MD5_CONFIG "CONFIG_FILE" "$final_path/CONFIG_FILE"	# Créé un backup du fichier de config si il a été modifié.
 STORE_MD5_CONFIG "CONFIG_FILE" "$final_path/CONFIG_FILE"	# Réenregistre la somme de contrôle du fichier de config
-###
 
+#=================================================
+# SETUP LOGROTATE
+#=================================================
 
-# Configure les droits d'accès au fichiers
-# -rw-r--r-- sur les fichiers
-sudo find $final_path -type f -print0 | xargs -0 sudo chmod 644
-# drwxr-xr-x sur les dossiers
-sudo find $final_path -type d -print0 | xargs -0 sudo chmod 755
+ynh_use_logrotate
+
+#=================================================
+# SETUP SYSTEMD
+#=================================================
+
+# Mise en place du script systemd
+sudo systemctl stop $app
+sudo cp ../conf/APP.service /etc/systemd/system/$app.service
+sudo chown root: /etc/systemd/system/$app.service
+sudo sed -i "s@__FINALPATH__@$final_path/@g" /etc/systemd/system/$app.service
+sudo sed -i "s@__APP__@$app@g" /etc/systemd/system/$app.service
+## Démarrage auto du service
+sudo systemctl enable $app
+
+#=================================================
+# GENERIC FINALISATION
+#=================================================
+# SECURING FILES AND DIRECTORIES
+#=================================================
+
 # Les fichiers appartiennent à root
 sudo chown -R root: $final_path
 
-# Recharge la configuration Nginx
-sudo service nginx reload
-# Régénère la configuration de SSOwat
-sudo yunohost app ssowatconf
+#=================================================
+# SETUP SSOWAT
+#=================================================
+
+if [ $is_public -eq 0 ]
+then	# Retire l'accès public
+	ynh_app_setting_delete $app skipped_uris
+fi
+# Make app public if necessary
+if [ $is_public -eq 1 ]
+then
+	ynh_app_setting_set $app skipped_uris "/"
+fi
+
+#=================================================
+# RELOAD NGINX
+#=================================================
+
+sudo systemctl reload nginx

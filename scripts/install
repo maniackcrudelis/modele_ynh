@@ -1,111 +1,187 @@
 #!/bin/bash
 
-source .fonctions	# Charge les fonctions génériques habituellement utilisées dans le script
+#=================================================
+# GENERIC STARTING
+#=================================================
+# IMPORT GENERIC HELPERS
+#=================================================
 
-CLEAN_SETUP () {
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# MANAGE FAILURE OF THE SCRIPT
+#=================================================
+
+ynh_clean_setup () {
 # Nettoyage des résidus d'installation non pris en charge par le script remove.
 # Pas de nettoyage supplémentaire nécessaire ici...
 	echo ""
 }
-TRAP_ON	# Active trap pour arrêter le script si une erreur est détectée.
+ynh_abort_if_errors	# Active trap pour arrêter le script si une erreur est détectée.
 
-# Retrieve arguments
+#=================================================
+# RETRIEVE ARGUMENTS FROM THE MANIFEST
+#=================================================
+
 domain=$YNH_APP_ARG_DOMAIN
-path=$YNH_APP_ARG_PATH
+path_url=$YNH_APP_ARG_PATH
 admin=$YNH_APP_ARG_ADMIN
 is_public=$YNH_APP_ARG_IS_PUBLIC
 
 app=$YNH_APP_INSTANCE_NAME
 
-# Source app helpers
-source /usr/share/yunohost/helpers
-
-# Vérifie que les variables ne sont pas vides.
-CHECK_VAR "$app" "app name not set"
-
+#=================================================
+# CHECK IF THE APP CAN BE INSTALLED WITH THIS ARGS
+#=================================================
 
 CHECK_USER "$admin"	# Vérifie la validité de l'user admin
-
-CHECK_PATH	# Vérifie et corrige la syntaxe du path.
+path_url=$(ynh_normalize_url_path $path_url)	# Vérifie et corrige la syntaxe du path.
 CHECK_DOMAINPATH	# Vérifie la disponibilité du path et du domaine.
-
 CHECK_FINALPATH	# Vérifie que le dossier de destination n'est pas déjà utilisé.
 
+#=================================================
+# STORE SETTINGS FROM MANIFEST
+#=================================================
 
-FIND_PORT 8095	# Cherche un port libre.
-# Ouvre le port dans le firewall
-sudo yunohost firewall allow --no-upnp TCP $port > /dev/null 2>&1
-
-
-# Enregistre les infos dans la config YunoHost
 ynh_app_setting_set $app domain $domain
-ynh_app_setting_set $app path $path
+ynh_app_setting_set $app path $path_url
 ynh_app_setting_set $app admin $admin
 ynh_app_setting_set $app is_public $is_public
+
+#=================================================
+# STANDARD MODIFICATIONS
+#=================================================
+# FIND AND OPEN A PORT
+#=================================================
+
+port=$(ynh_find_port 8095)	# Cherche un port libre.
+# Ouvre le port dans le firewall
+ALL_QUIET sudo yunohost firewall allow --no-upnp TCP $port
 ynh_app_setting_set $app port $port
 
-GENERATE_DB $app	# Créer une base de données et un utilisateur dédié au nom de l'app.
+#=================================================
+# INSTALL DEPENDENCIES
+#=================================================
 
+ynh_install_app_dependencies deb1 deb2
 
-# Créer le repertoire de destination et stocke son emplacement.
-sudo mkdir "$final_path"
+#=================================================
+# CREATE A SQL BDD
+#=================================================
+
+db_name=$(ynh_make_valid_dbid $app)
+ynh_app_setting_set $app db_name $db_name
+ynh_mysql_generate_db $db_name $db_name
+
+#=================================================
+# DOWNLOAD, CHECK AND UNPACK SOURCE
+#=================================================
+
 ynh_app_setting_set $app final_path $final_path
+SETUP_SOURCE	# Télécharge la source, décompresse et copie dans $final_path
 
-SETUP_SOURCE "APP_NAME.tar.gz"	# Télécharge la source, décompresse et copie dans $final_path
+#=================================================
+# NGINX CONFIGURATION
+#=================================================
 
-# Et copie le fichier de config nginx
+# Copie le fichier de config nginx
 sudo cp ../conf/nginx.conf /etc/nginx/conf.d/$domain.d/$app.conf
-
-
 # Modifie les variables dans le fichier de configuration nginx
-sudo sed -i "s@__PATHTOCHANGE__@$path@g" /etc/nginx/conf.d/$domain.d/$app.conf
+sudo sed -i "s@__PATHTOCHANGE__@$path_url@g" /etc/nginx/conf.d/$domain.d/$app.conf
 sudo sed -i "s@__FINALPATH__@$final_path@g" /etc/nginx/conf.d/$domain.d/$app.conf
 sudo sed -i "s@__NAMETOCHANGE__@$app@g" /etc/nginx/conf.d/$domain.d/$app.conf
 sudo sed -i "s@__PORT__@$port@g" /etc/nginx/conf.d/$domain.d/$app.conf
 
+#=================================================
+# CREATE DEDICATED USER
+#=================================================
+
+ynh_system_user_create $app	# Créer un utilisateur système dédié à l'app
+
+#=================================================
+# PHP-FPM CONFIGURATION
+#=================================================
+
 POOL_FPM	# Créer le fichier de configuration du pool php-fpm et le configure.
 
+#=================================================
+# SPECIFIC SETUP
+#=================================================
+# ...
+#=================================================
 
-###
-#! INSTALLATION SPÉCIFIQUE DU PAQUET
+#=================================================
+# SETUP SYSTEMD
+#=================================================
+
+sudo cp ../conf/APP.service /etc/systemd/system/$app.service
+sudo chown root: /etc/systemd/system/$app.service
+sudo sed -i "s@__FINALPATH__@$final_path/@g" /etc/systemd/system/$app.service
+sudo sed -i "s@__APP__@$app@g" /etc/systemd/system/$app.service
+## Démarrage auto du service
+sudo systemctl enable $app
+
+#=================================================
+# SETTING UP WITH CURL
+#=================================================
+
+# Set right permissions for curl install
+sudo chown -R $app: $final_path
 
 # Rend la page d'install publique pour curl
-ynh_app_setting_set $app skipped_uris "/"
-sudo yunohost app ssowatconf
+ynh_app_setting_set $app unprotected_uris "/"
+sudo yunohost app ssowatconf	# Régénère la configuration de SSOwat
 
-# Copie ou modification d'un fichier de config
+# Reload Nginx
+sudo systemctl reload nginx
+
+# Installation via curl
+YNH_CURL "DATA" "/INSTALL_PATH"
+
+#=================================================
+# STORE THE CHECKSUM OF THE CONFIG FILE
+#=================================================
+
 STORE_MD5_CONFIG "CONFIG_FILE" "$final_path/CONFIG_FILE"	# Enregistre la somme de contrôle du fichier de config
-###
 
+#=================================================
+# GENERIC FINALISATION
+#=================================================
+# SECURING FILES AND DIRECTORIES
+#=================================================
 
-# Configure les droits d'accès au fichiers
-# -rw-r--r-- sur les fichiers
-sudo find $final_path -type f -print0 | xargs -0 sudo chmod 644
-# drwxr-xr-x sur les dossiers
-sudo find $final_path -type d -print0 | xargs -0 sudo chmod 755
 # Les fichiers appartiennent à root
 sudo chown -R root: $final_path
 
+#=================================================
+# SETUP LOGROTATE
+#=================================================
 
-# Configuration de logrotate
-sed -i "s@__APP__@$app@g" ../conf/logrotate
-sudo cp ../conf/logrotate /etc/logrotate.d/$app
+ynh_use_logrotate
 
+#=================================================
+# ENABLE SERVICE IN ADMIN PANEL
+#=================================================
 
-# Ajoute le service au monitoring de Yunohost.
 sudo yunohost service add NAME_INIT.D --log "/var/log/FICHIER.log"
 
-if [ "$is_public" = "No" ];
+#=================================================
+# SETUP SSOWAT
+#=================================================
+
+if [ $is_public -eq 0 ]
 then	# Retire l'accès public
 	ynh_app_setting_delete $app skipped_uris
 fi
 # Make app public if necessary
-if [ "$is_public" = "Yes" ];
+if [ $is_public -eq 1 ]
 then
-    ynh_app_setting_set $app skipped_uris "/"
+	ynh_app_setting_set $app skipped_uris "/"
 fi
 
-# Recharge la configuration Nginx
-sudo service nginx reload
-# Régénère la configuration de SSOwat
-sudo yunohost app ssowatconf
+#=================================================
+# RELOAD NGINX
+#=================================================
+
+sudo systemctl reload nginx
