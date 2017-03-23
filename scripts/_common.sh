@@ -1,13 +1,258 @@
 #!/bin/bash
 
 #=================================================
-# CHECKING
+#=================================================
+# TESTING
+#=================================================
 #=================================================
 
-CHECK_USER () {	# Vérifie la validité de l'user admin
-# $1 = Variable de l'user admin.
-	ynh_user_exists "$1" || ynh_die "Wrong user"
+# Substitute a string by another in a file
+#
+# usage: ynh_substitute_char string_to_find replace_string file_to_analyse
+# | arg: string_to_find - String to replace in the file
+# | arg: replace_string - New string that will replace
+# | arg: file_to_analyse - File where the string will be replaced.
+ynh_substitute_char () {
+	delimit=@
+	match_char=${1//${delimit}/"\\${delimit}"}	# Escape the delimiter if it's in the string.
+	replace_char=${2//${delimit}/"\\${delimit}"}
+	workfile=$3
+
+	sudo sed --in-place "s${delimit}${match_char}${delimit}${replace_char}${delimit}g" "$workfile"
 }
+
+# Remove a file or a directory securely
+#
+# usage: ynh_secure_remove path_to_remove
+# | arg: path_to_remove - File or directory to remove
+ynh_secure_remove () {
+	path_to_remove=$1
+	forbidden_path=" \
+	/var/www \
+	/home/yunohost.app"
+
+	if [[ "$forbidden_path" =~ "$path_to_remove" \
+		# Match all path or subpath in $forbidden_path
+		|| "$path_to_remove" =~ ^/[[:alnum:]]+$ \
+		# Match all first level path from / (Like /var, /root, etc...)
+		|| "${path_to_remove:${#path_to_remove}-1}" = "/" ]]
+		# Match if the path finish by /. Because it's seems there is an empty variable
+	then
+		echo "Avoid deleting of $path_to_remove." >&2
+	else
+		if [ -e "$path_to_remove" ]
+		then
+			sudo rm -R "$path_to_remove"
+		else
+			echo "$path_to_remove doesn't deleted because it's not exist." >&2
+		fi
+	fi
+}
+# ynh_secure_remove "/"
+# ynh_secure_remove "/var"
+# ynh_secure_remove "/var/www"
+# ynh_secure_remove "/var/www/file"
+# ynh_secure_remove "/opt"
+# ynh_secure_remove "/opt/file"
+# ynh_secure_remove "/home/yunohost.app"
+# ynh_secure_remove "/home"
+# ynh_secure_remove "/home/"
+# ynh_secure_remove "//"
+# ynh_secure_remove "/etc/cron.d/"
+# ynh_secure_remove "/etc"
+# ynh_secure_remove "/etc/"
+# ynh_secure_remove "/etc/X11"
+# ynh_secure_remove "/etc/X11/$var"
+
+ynh_setup_source () {
+	src_url=$(cat ../conf/app.src | grep SOURCE_URL | cut -d= -f2-)
+	src_checksum=$(cat ../conf/app.src | grep SOURCE_SUM | cut -d= -f2-)
+	arch_format=$(cat ../conf/app.src | grep ARCH_FORMAT | cut -d= -f2-)
+	local_source="/opt/yunohost-apps-src/$YNH_APP_ID/source.$arch_format"
+
+	if test -e "$local_source"
+	then	# Use the local source file if it is present
+		cp $local_source source.$arch_format
+	else	# If not, download the source
+		wget -nv -O source.$arch_format $src_url
+    fi
+
+	# Check the control sum
+	echo "$src_checksum source.$arch_format" \
+		| md5sum -c --status || ynh_die "Corrupt source"
+
+	# Extract source into the app dir
+	sudo mkdir -p "$final_path"
+	if [ $(echo "$arch_format" | tr '[:upper:]' '[:lower:]') = "zip" ]
+	then # Zip format
+		# Using of a temp directory, because unzip doesn't manage --strip-components
+		temp_dir=$(mktemp -d)
+		unzip -quo source.zip -d "$temp_dir"
+		sudo cp -a $temp_dir/*/. "$final_path"
+		ynh_secure_remove "$temp_dir"
+	elif [ $(echo "$arch_format" | tr '[:upper:]' '[:lower:]') = "tar.gz" ]; then
+		sudo tar -x -f source.tar.gz -C "$final_path" --strip-components 1
+	else
+		ynh_die "Format d'archive non reconnu."
+	fi
+
+	# Apply patches
+	if test -f ../sources/patches/*.patch; then
+		(cd "$DEST" \
+			&& for p in ${PKG_DIR}/patches/*.patch; do \
+				sudo patch -p1 < $p; done) \
+			|| ynh_die "Unable to apply patches"
+	fi
+
+	# Add supplementary files
+	if test -e "../sources/extra_files"; then
+		sudo cp -a ../sources/extra_files/. "$final_path"
+	fi
+}
+
+ynh_backup_abstract () {
+	# A intégrer à ynh_backup directement.
+	ynh_backup "$@"
+	echo "$2" "$1" >> backup_list
+}
+
+ynh_restore_file () {
+	file_and_dest=$(grep "^$1" backup_list)
+	backup_file=${file_and_dest%% *}
+	backup_dest=${file_and_dest#* }
+	if [ -f "$backup_dest" ]; then
+		ynh_die "There is already a file at this path: $backup_dest"
+	fi
+	if test -d "$backup_file"; then
+		sudo cp -a "$backup_file/." "$backup_dest"
+	else
+		sudo cp -a "$backup_file" "$backup_dest"
+	fi
+}
+
+ynh_fpm_config () {
+	finalphpconf="/etc/php5/fpm/pool.d/$app.conf"
+	ynh_compare_checksum_config "$finalphpconf" 1
+	sudo cp ../conf/php-fpm.conf "$finalphpconf"
+	ynh_substitute_char "__NAMETOCHANGE__" "$app" "$finalphpconf"
+	ynh_substitute_char "__FINALPATH__" "$final_path" "$finalphpconf"
+	ynh_substitute_char "__USER__" "$app" "$finalphpconf"
+	sudo chown root: "$finalphpconf"
+	ynh_store_checksum_config "$finalphpconf"
+
+	if [ -e "../conf/php-fpm.ini" ]
+	then
+		finalphpini="/etc/php5/fpm/conf.d/20-$app.ini"
+		ynh_compare_checksum_config "$finalphpini" 1
+		sudo cp ../conf/php-fpm.ini "$finalphpini"
+		sudo chown root: "$finalphpini"
+		ynh_store_checksum_config "$finalphpini"
+	fi
+
+	sudo systemctl reload php5-fpm
+}
+
+ynh_remove_fpm_config () {
+	ynh_secure_remove "/etc/php5/fpm/pool.d/$app.conf"
+	ynh_secure_remove "/etc/php5/fpm/conf.d/20-$app.ini"
+	sudo systemctl reload php5-fpm
+}
+
+ynh_nginx_config () {
+	finalnginxconf="/etc/nginx/conf.d/$domain.d/$app.conf"
+	ynh_compare_checksum_config "$finalnginxconf" 1
+	sudo cp ../conf/nginx.conf "$finalnginxconf"
+
+	# To avoid a break by set -u, use a void substitution ${var:-}. If the variable is not set, it's simply set with an empty variable.
+	# Substitute in a nginx config file only if the variable is not empty
+	if test -n "${path_url:-}"; then
+		ynh_substitute_char "__PATH__" "$path_url" "$finalnginxconf"
+	fi
+	if test -n "${domain:-}"; then
+		ynh_substitute_char "__DOMAIN__" "$domain" "$finalnginxconf"
+	fi
+	if test -n "${port:-}"; then
+		ynh_substitute_char "__PORT__" "$port" "$finalnginxconf"
+	fi
+	if test -n "${app:-}"; then
+		ynh_substitute_char "__NAME__" "$app" "$finalnginxconf"
+	fi
+	if test -n "${final_path:-}"; then
+		ynh_substitute_char "__FINALPATH__" "$final_path" "$finalnginxconf"
+	fi
+	ynh_store_checksum_config "$finalnginxconf"
+
+	sudo systemctl reload nginx
+}
+
+ynh_remove_nginx_config () {
+	ynh_secure_remove "/etc/nginx/conf.d/$domain.d/$app.conf"
+	sudo systemctl reload nginx
+}
+
+ynh_store_checksum_config () {
+	config_file_checksum=checksum_${1//[\/ ]/_}	# Replace all '/' and ' ' by '_'
+	ynh_app_setting_set $app $config_file_checksum $(sudo md5sum "$1" | cut -d' ' -f1)
+}
+
+ynh_compare_checksum_config () {
+	current_config_file=$1
+	compress_backup=${2:-0}	# If $2 is empty, compress_backup will set at 0
+	config_file_checksum=checksum_${current_config_file//[\/ ]/_}	# Replace all '/' and ' ' by '_'
+	checksum_value=$(ynh_app_setting_get $app $config_file_checksum)
+	if [ -n "$checksum_value" ]
+	then	# Proceed only if a value was stocked into the app config
+		if ! echo "$checksum_value $current_config_file" | md5sum -c --status
+		then	# If the checksum is now different
+			backup_config_file="$current_config_file.backup.$(date '+%d.%m.%y_%Hh%M,%Ss')"
+			if [ compress_backup -eq 1 ]
+			then
+				sudo tar --create --gzip --file "$backup_config_file.tar.gz" "$current_config_file"	# Backup the current config file and compress
+				backup_config_file="$backup_config_file.tar.gz"
+			else
+				sudo cp -a "$current_config_file" "$backup_config_file"	# Backup the current config file
+			fi
+			echo "Config file $current_config_file has been manually modified since the installation or last upgrade. So it has been duplicated in $backup_config_file" >&2
+			echo "$backup_config_file"	# Return the name of the backup file
+		fi
+	fi
+}
+
+ynh_systemd_config () {
+	finalsystemdconf="/etc/systemd/system/$app.service"
+	ynh_compare_checksum_config "$finalsystemdconf" 1
+	sudo cp ../conf/systemd.service "$finalsystemdconf"
+
+	# To avoid a break by set -u, use a void substitution ${var:-}. If the variable is not set, it's simply set with an empty variable.
+	# Substitute in a nginx config file only if the variable is not empty
+	if test -n "${final_path:-}"; then
+		ynh_substitute_char "__FINALPATH__" "$final_path" "$finalsystemdconf"
+	fi
+	if test -n "${app:-}"; then
+		ynh_substitute_char "__APP__" "$app" "$finalsystemdconf"
+	fi
+	ynh_store_checksum_config "$finalsystemdconf"
+
+	sudo chown root: "$finalsystemdconf"
+	sudo systemctl enable $app
+	sudo systemctl daemon-reload
+}
+
+ynh_remove_systemd_config () {
+	finalsystemdconf="/etc/systemd/system/$app.service"
+	if [ -e "$finalsystemdconf" ]; then
+		sudo systemctl stop $app
+		sudo systemctl disable $app
+		ynh_secure_remove "$finalsystemdconf"
+	fi
+}
+
+#=================================================
+#=================================================
+
+#=================================================
+# CHECKING
+#=================================================
 
 CHECK_DOMAINPATH () {	# Vérifie la disponibilité du path et du domaine.
 	sudo yunohost app checkurl $domain$path_url -a $app
@@ -76,7 +321,7 @@ SETUP_SOURCE_ZIP () {	# Télécharge la source, décompresse et copie dans $fina
 	temp_dir=$(mktemp -d)
 	unzip -quo source.zip -d $temp_dir	# On passe par un dossier temporaire car unzip ne permet pas d'ignorer le dossier parent.
 	sudo cp -a $temp_dir/*/. $final_path
-	rm -r $temp_dir
+	ynh_secure_remove $temp_dir
 	# Copie les fichiers additionnels ou modifiés.
 	if test -e "../sources/ajouts"; then
 		sudo cp -a ../sources/ajouts/. "$final_path"
@@ -110,7 +355,7 @@ YNH_CURL () {
 REMOVE_NGINX_CONF () {	# Suppression de la configuration nginx
 	if [ -e "/etc/nginx/conf.d/$domain.d/$app.conf" ]; then	# Delete nginx config
 		echo "Delete nginx config"
-		sudo rm "/etc/nginx/conf.d/$domain.d/$app.conf"
+		ynh_secure_remove "/etc/nginx/conf.d/$domain.d/$app.conf"
 		sudo systemctl reload nginx
 	fi
 }
@@ -118,11 +363,11 @@ REMOVE_NGINX_CONF () {	# Suppression de la configuration nginx
 REMOVE_FPM_CONF () {	# Suppression de la configuration du pool php-fpm
 	if [ -e "/etc/php5/fpm/pool.d/$app.conf" ]; then	# Delete fpm config
 		echo "Delete fpm config"
-		sudo rm "/etc/php5/fpm/pool.d/$app.conf"
+		ynh_secure_remove "/etc/php5/fpm/pool.d/$app.conf"
 	fi
 	if [ -e "/etc/php5/fpm/conf.d/20-$app.ini" ]; then	# Delete php config
 		echo "Delete php config"
-		sudo rm "/etc/php5/fpm/conf.d/20-$app.ini"
+		ynh_secure_remove "/etc/php5/fpm/conf.d/20-$app.ini"
 	fi
 	sudo systemctl reload php5-fpm
 }
@@ -146,7 +391,7 @@ SECURE_REMOVE () {      # Suppression de dossier avec vérification des variable
 	then
 		if [ -e "$chaine" ]; then
 			echo "Delete directory $chaine"
-			sudo rm -r "$chaine"
+			ynh_secure_remove "$chaine"
 		fi
 		return 0
 	else
@@ -224,6 +469,13 @@ CHECK_MD5_CONFIG () {	# Créé un backup du fichier de config si il a été modi
 	fi
 }
 
+#=================================================
+# PACKAGE CHECK BYPASSING...
+#=================================================
+
+IS_PACKAGE_CHECK () {	# Détermine une exécution en conteneur (Non testé)
+	return $(uname -n | grep -c 'pchecker_lxc')
+}
 
 #=================================================
 #=================================================

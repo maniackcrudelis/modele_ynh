@@ -47,17 +47,13 @@ test ! -d $final_path \
 # RESTORE OF THE NGINX CONFIGURATION
 #=================================================
 
-conf=/etc/nginx/conf.d/$domain.d/$app.conf
-if [ -f $conf ]; then
-	ynh_die "There is already a nginx conf file at this path: $conf "
-fi
-sudo cp -a ./nginx.conf $conf
+ynh_restore_file nginx.conf
 
 #=================================================
 # RESTORE OF THE MAIN DIR OF THE APP
 #=================================================
 
-sudo cp -a ./sources/. $final_path
+ynh_restore_file sources
 
 #=================================================
 # RESTORE OF THE SQL BDD
@@ -84,8 +80,8 @@ sudo chown -R root: $final_path
 # RESTORE OF THE PHP-FPM CONFIGURATION
 #=================================================
 
-sudo cp -a ./php-fpm.conf /etc/php5/fpm/pool.d/$app.conf
-sudo cp -a ./php-fpm.ini /etc/php5/fpm/conf.d/20-$app.ini
+ynh_restore_file php-fpm.conf
+ynh_restore_file php-fpm.ini
 
 #=================================================
 # SPECIFIC RESTORE
@@ -105,7 +101,7 @@ sudo yunohost service add $app --log "/var/log/$app/APP.log"
 # RESTORE SYSTEMD
 #=================================================
 
-sudo cp -a $backup_dir/$app.service /etc/systemd/system/$app.service
+ynh_restore_file systemd
 ## Démarrage auto du service
 sudo systemctl enable $app.service
 
@@ -113,19 +109,19 @@ sudo systemctl enable $app.service
 # RESTORE OF THE CRON FILE
 #=================================================
 
-sudo cp -a "cron" "/etc/cron.d/$app"
+ynh_restore_file cron
 
 #=================================================
 # BACKUP OF THE LOGROTATE CONFIGURATION
 #=================================================
 
-sudo cp -a ./logrotate /etc/logrotate.d/$app
+ynh_restore_file logrotate
 
 #=================================================
 # RESTORE THE APP CONFIGURATION
 #=================================================
 
-sudo cp -a ./etc /etc/$app
+ynh_restore_file etc
 
 #=================================================
 # GENERIC FINALISATION

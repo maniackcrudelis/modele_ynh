@@ -35,7 +35,6 @@ app=$YNH_APP_INSTANCE_NAME
 # CHECK IF THE APP CAN BE INSTALLED WITH THIS ARGS
 #=================================================
 
-CHECK_USER "$admin"	# Vérifie la validité de l'user admin
 path_url=$(ynh_normalize_url_path $path_url)	# Vérifie et corrige la syntaxe du path.
 CHECK_DOMAINPATH	# Vérifie la disponibilité du path et du domaine.
 CHECK_FINALPATH	# Vérifie que le dossier de destination n'est pas déjà utilisé.
@@ -79,19 +78,13 @@ ynh_mysql_generate_db $db_name $db_name
 #=================================================
 
 ynh_app_setting_set $app final_path $final_path
-SETUP_SOURCE	# Télécharge la source, décompresse et copie dans $final_path
+ynh_setup_source	# Télécharge la source, décompresse et copie dans $final_path
 
 #=================================================
 # NGINX CONFIGURATION
 #=================================================
 
-# Copie le fichier de config nginx
-sudo cp ../conf/nginx.conf /etc/nginx/conf.d/$domain.d/$app.conf
-# Modifie les variables dans le fichier de configuration nginx
-sudo sed -i "s@__PATHTOCHANGE__@$path_url@g" /etc/nginx/conf.d/$domain.d/$app.conf
-sudo sed -i "s@__FINALPATH__@$final_path@g" /etc/nginx/conf.d/$domain.d/$app.conf
-sudo sed -i "s@__NAMETOCHANGE__@$app@g" /etc/nginx/conf.d/$domain.d/$app.conf
-sudo sed -i "s@__PORT__@$port@g" /etc/nginx/conf.d/$domain.d/$app.conf
+ynh_nginx_config
 
 #=================================================
 # CREATE DEDICATED USER
@@ -103,7 +96,7 @@ ynh_system_user_create $app	# Créer un utilisateur système dédié à l'app
 # PHP-FPM CONFIGURATION
 #=================================================
 
-POOL_FPM	# Créer le fichier de configuration du pool php-fpm et le configure.
+ynh_fpm_config	# Créer le fichier de configuration du pool php-fpm et le configure.
 
 #=================================================
 # SPECIFIC SETUP
@@ -115,12 +108,7 @@ POOL_FPM	# Créer le fichier de configuration du pool php-fpm et le configure.
 # SETUP SYSTEMD
 #=================================================
 
-sudo cp ../conf/APP.service /etc/systemd/system/$app.service
-sudo chown root: /etc/systemd/system/$app.service
-sudo sed -i "s@__FINALPATH__@$final_path/@g" /etc/systemd/system/$app.service
-sudo sed -i "s@__APP__@$app@g" /etc/systemd/system/$app.service
-## Démarrage auto du service
-sudo systemctl enable $app
+ynh_systemd_config
 
 #=================================================
 # SETTING UP WITH CURL
@@ -143,7 +131,7 @@ YNH_CURL "DATA" "/INSTALL_PATH"
 # STORE THE CHECKSUM OF THE CONFIG FILE
 #=================================================
 
-STORE_MD5_CONFIG "CONFIG_FILE" "$final_path/CONFIG_FILE"	# Enregistre la somme de contrôle du fichier de config
+ynh_store_checksum_config "$final_path/CONFIG_FILE"	# Enregistre la somme de contrôle du fichier de config
 
 #=================================================
 # GENERIC FINALISATION
