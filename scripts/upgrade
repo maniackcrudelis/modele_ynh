@@ -36,7 +36,7 @@ elif [ "$is_public" = "No" ]; then
 fi
 
 if [ -z $db_name ]; then	# Si db_name n'est pas renseigné dans app setting
-	db_name=$(ynh_make_valid_dbid $app)
+	db_name=$(ynh_sanitize_dbid $app)
 	ynh_app_setting_set $app db_name $db_name
 fi
 
@@ -62,7 +62,7 @@ path_url=$(ynh_normalize_url_path $path_url)	# Vérifie et corrige la syntaxe du
 # DOWNLOAD, CHECK AND UNPACK SOURCE
 #=================================================
 
-ynh_setup_source	# Télécharge la source, décompresse et copie dans $final_path
+ynh_setup_source "$final_path"	# Télécharge la source, décompresse et copie dans $final_path
 
 #=================================================
 # NGINX CONFIGURATION
@@ -89,8 +89,8 @@ ynh_fpm_config	# Créer le fichier de configuration du pool php-fpm et le config
 #=================================================
 
 # Copie ou modification d'un fichier de config
-ynh_compare_checksum_config "$final_path/CONFIG_FILE"	# Créé un backup du fichier de config si il a été modifié.
-ynh_store_checksum_config "$final_path/CONFIG_FILE"	# Réenregistre la somme de contrôle du fichier de config
+ynh_backup_if_checksum_is_different "$final_path/CONFIG_FILE"	# Créé un backup du fichier de config si il a été modifié.
+ynh_store_file_checksum "$final_path/CONFIG_FILE"	# Réenregistre la somme de contrôle du fichier de config
 
 #=================================================
 # SETUP LOGROTATE
