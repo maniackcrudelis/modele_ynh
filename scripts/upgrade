@@ -8,6 +8,8 @@
 
 source _common.sh
 source /usr/share/yunohost/helpers
+# Load common variables for all scripts.
+source _variables
 
 #=================================================
 # LOAD SETTINGS
@@ -22,6 +24,12 @@ is_public=$(ynh_app_setting_get $app is_public)
 final_path=$(ynh_app_setting_get $app final_path)
 port=$(ynh_app_setting_get $app port)
 db_name=$(ynh_app_setting_get $app db_name)
+
+#=================================================
+# CHECK VERSION
+#=================================================
+
+ynh_abort_if_up_to_date
 
 #=================================================
 # FIX OLD THINGS
@@ -44,11 +52,14 @@ fi
 # BACKUP BEFORE UPGRADE THEN ACTIVE TRAP
 #=================================================
 
-BACKUP_BEFORE_UPGRADE	# Backup the current version of the app
+# Backup the current version of the app
+ynh_backup_before_upgrade
 ynh_clean_setup () {
-	BACKUP_FAIL_UPGRADE	# restore it if the upgrade fails
+	# restore it if the upgrade fails
+	ynh_restore_upgradebackup
 }
-ynh_abort_if_errors	# Active trap pour arrêter le script si une erreur est détectée.
+# Exit if an error occurs during the execution of the script
+ynh_abort_if_errors
 
 #=================================================
 # CHECK THE PATH
@@ -68,7 +79,7 @@ ynh_setup_source "$final_path"	# Télécharge la source, décompresse et copie d
 # NGINX CONFIGURATION
 #=================================================
 
-ynh_nginx_config
+ynh_add_nginx_config
 
 #=================================================
 # CREATE DEDICATED USER
@@ -80,7 +91,7 @@ ynh_system_user_create $app	# Create the dedicated user, if not exist
 # PHP-FPM CONFIGURATION
 #=================================================
 
-ynh_fpm_config	# Créer le fichier de configuration du pool php-fpm et le configure.
+ynh_add_fpm_config	# Créer le fichier de configuration du pool php-fpm et le configure.
 
 #=================================================
 # SPECIFIC UPGRADE
@@ -96,13 +107,13 @@ ynh_store_file_checksum "$final_path/CONFIG_FILE"	# Réenregistre la somme de co
 # SETUP LOGROTATE
 #=================================================
 
-ynh_use_logrotate
+ynh_use_logrotate --non-append
 
 #=================================================
 # SETUP SYSTEMD
 #=================================================
 
-ynh_systemd_config
+ynh_add_systemd_config
 
 #=================================================
 # GENERIC FINALISATION
@@ -111,7 +122,7 @@ ynh_systemd_config
 #=================================================
 
 # Les fichiers appartiennent à root
-sudo chown -R root: $final_path
+chown -R root: $final_path
 
 #=================================================
 # SETUP SSOWAT
@@ -131,4 +142,4 @@ fi
 # RELOAD NGINX
 #=================================================
 
-sudo systemctl reload nginx
+systemctl reload nginx

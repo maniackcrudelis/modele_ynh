@@ -1,12 +1,11 @@
 ;; Test complet
-	auto_remove=1
 	; Manifest
 		domain="domain.tld"	(DOMAIN)
 		path="/path"	(PATH)
 		admin="john"	(USER)
 		language="fr"
 		is_public=1	(PUBLIC|public=1|private=0)
-		password="pass"	(PASSWORD)
+		password="pass"
 		port="666"	(PORT)
 	; Checks
 		pkg_linter=1
@@ -16,6 +15,7 @@
 		setup_private=1
 		setup_public=1
 		upgrade=1
+		upgrade=1	from_commit=b86b9d09ed97bf04b7e1afad72376d8d695b418b
 		backup_restore=1
 		multi_instance=1
 		incorrect_path=1
@@ -27,7 +27,6 @@
 	Level 3=auto
 # Level 4: 
 	Level 4=0
-# Level 5: 
 	Level 5=auto
 	Level 6=auto
 	Level 7=auto
@@ -36,4 +35,8 @@
 	Level 10=0
 ;;; Options
 Email=
-Notification=none
+Notification=down
+;;; Upgrade options
+	; commit=b86b9d09ed97bf04b7e1afad72376d8d695b418b
+		name=20 Jan 2017 b86b9d09ed97bf04b7e1afad72376d8d695b418b
+		manifest_arg=domain=DOMAIN&admin=USER&path=PATH&language=en&is_public=Yes&abiword=0&

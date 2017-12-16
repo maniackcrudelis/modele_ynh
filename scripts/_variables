@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Dependencies
+app_depencencies="dep1 dep2"
+
+# Version of nodejs
+nodejs_version=4

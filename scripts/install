@@ -8,6 +8,8 @@
 
 source _common.sh
 source /usr/share/yunohost/helpers
+# Load common variables for all scripts.
+source _variables
 
 #=================================================
 # MANAGE FAILURE OF THE SCRIPT
@@ -32,12 +34,19 @@ is_public=$YNH_APP_ARG_IS_PUBLIC
 app=$YNH_APP_INSTANCE_NAME
 
 #=================================================
-# CHECK IF THE APP CAN BE INSTALLED WITH THIS ARGS
+# CHECK IF THE APP CAN BE INSTALLED WITH THESE ARGS
 #=================================================
 
-path_url=$(ynh_normalize_url_path $path_url)	# Vérifie et corrige la syntaxe du path.
-CHECK_DOMAINPATH	# Vérifie la disponibilité du path et du domaine.
-CHECK_FINALPATH	# Vérifie que le dossier de destination n'est pas déjà utilisé.
+final_path=/var/www/$app
+test ! -e "$final_path" || ynh_die "This path already contains a folder"
+
+# Normalize the url path syntax
+path_url=$(ynh_normalize_url_path $path_url)
+
+# Check web path availability
+ynh_webpath_available $domain $path_url
+# Register (book) web path
+ynh_webpath_register $app $domain $path_url
 
 #=================================================
 # STORE SETTINGS FROM MANIFEST
@@ -56,14 +65,14 @@ ynh_app_setting_set $app is_public $is_public
 
 port=$(ynh_find_port 8095)	# Cherche un port libre.
 # Ouvre le port dans le firewall
-ALL_QUIET sudo yunohost firewall allow --no-upnp TCP $port
+ynh_exec_fully_quiet yunohost firewall allow --no-upnp TCP $port
 ynh_app_setting_set $app port $port
 
 #=================================================
 # INSTALL DEPENDENCIES
 #=================================================
 
-ynh_install_app_dependencies deb1 deb2
+ynh_install_app_dependencies $app_depencencies
 
 #=================================================
 # CREATE A SQL BDD
@@ -84,7 +93,7 @@ ynh_setup_source "$final_path"	# Télécharge la source, décompresse et copie d
 # NGINX CONFIGURATION
 #=================================================
 
-ynh_nginx_config
+ynh_add_nginx_config
 
 #=================================================
 # CREATE DEDICATED USER
@@ -96,7 +105,7 @@ ynh_system_user_create $app	# Créer un utilisateur système dédié à l'app
 # PHP-FPM CONFIGURATION
 #=================================================
 
-ynh_fpm_config	# Créer le fichier de configuration du pool php-fpm et le configure.
+ynh_add_fpm_config	# Créer le fichier de configuration du pool php-fpm et le configure.
 
 #=================================================
 # SPECIFIC SETUP
@@ -108,24 +117,30 @@ ynh_fpm_config	# Créer le fichier de configuration du pool php-fpm et le config
 # SETUP SYSTEMD
 #=================================================
 
-ynh_systemd_config
+ynh_add_systemd_config
 
 #=================================================
 # SETTING UP WITH CURL
 #=================================================
 
 # Set right permissions for curl install
-sudo chown -R $app: $final_path
+chown -R $app: $final_path
 
 # Rend la page d'install publique pour curl
-ynh_app_setting_set $app unprotected_uris "/"
-sudo yunohost app ssowatconf	# Régénère la configuration de SSOwat
+ynh_app_setting_set $app skipped_uris "/"
+yunohost app ssowatconf	# Régénère la configuration de SSOwat
 
 # Reload Nginx
-sudo systemctl reload nginx
+systemctl reload nginx
 
 # Installation via curl
 ynh_local_curl "/INSTALL_PATH" "key1=value1" "key2=value2" "key3=value3"
+
+#=================================================
+# MODIFY A CONFIG FILE
+#=================================================
+
+ynh_replace_string "match_string" "replace_string" "$final_path/CONFIG_FILE"
 
 #=================================================
 # STORE THE CHECKSUM OF THE CONFIG FILE
@@ -140,7 +155,7 @@ ynh_store_file_checksum "$final_path/CONFIG_FILE"	# Enregistre la somme de contr
 #=================================================
 
 # Les fichiers appartiennent à root
-sudo chown -R root: $final_path
+chown -R root: $final_path
 
 #=================================================
 # SETUP LOGROTATE
@@ -152,7 +167,7 @@ ynh_use_logrotate
 # ENABLE SERVICE IN ADMIN PANEL
 #=================================================
 
-sudo yunohost service add NAME_INIT.D --log "/var/log/FICHIER.log"
+yunohost service add NAME_INIT.D --log "/var/log/FICHIER.log"
 
 #=================================================
 # SETUP SSOWAT
@@ -172,4 +187,12 @@ fi
 # RELOAD NGINX
 #=================================================
 
-sudo systemctl reload nginx
+systemctl reload nginx
+
+#=================================================
+# SEND A README FOR THE ADMIN
+#=================================================
+
+message="If you facing an issue or want to improve this app, please open a new issue in this project: https://github.com/YunoHost-Apps/modele_ynh"
+
+ynh_send_readme_to_admin "$message" "$admin root"

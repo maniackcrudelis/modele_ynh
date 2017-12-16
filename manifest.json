@@ -2,19 +2,19 @@
 	"name": "APP NAME",
 	"id": "APP_ID",
 	"packaging_format": 1,
-	"requirements": {
-		"yunohost": ">= 2.4"
-	},
 	"description": {
 		"en": "Description",
 		"fr": "Description"
 	},
-	"version": "1.0",
+	"version": "1.0~ynh1",
 	"url": "http://www.site",
 	"license": "free",
 	"maintainer": {
 		"name": "Maniack Crudelis",
 		"email": "maniackc_dev@crudelis.fr"
+	},
+	"requirements": {
+        "yunohost": ">= 2.7.2"
 	},
 	"multi_instance": true,
 	"services": [

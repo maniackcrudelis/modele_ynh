@@ -31,10 +31,10 @@ ynh_remove_systemd_config
 # DISABLE SERVICE IN ADMIN PANEL
 #=================================================
 
-if sudo yunohost service status | grep -q $app	# Test l'existence du service dans Yunohost
+if yunohost service status | grep -q $app	# Test l'existence du service dans Yunohost
 then
-	echo "Remove $app service"
-	sudo yunohost service remove $app
+	ynh_print_info "Remove $app service" >&2
+	yunohost service remove $app
 fi
 
 #=================================================
@@ -77,10 +77,10 @@ ynh_remove_logrotate	# Suppression de la configuration de logrotate
 # CLOSE A PORT
 #=================================================
 
-if sudo yunohost firewall list | grep -q "\- $port$"
+if yunohost firewall list | grep -q "\- $port$"
 then
-	echo "Close port $port"
-	QUIET sudo yunohost firewall disallow TCP $port
+	ynh_print_info "Close port $port" >&2
+	ynh_exec_quiet yunohost firewall disallow TCP $port
 fi
 
 #=================================================
