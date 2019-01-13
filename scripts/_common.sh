@@ -256,8 +256,6 @@ ynh_handle_getopts_args () {
 
 #=================================================
 
-#!/bin/bash
-
 # Install or update the main directory yunohost.multimedia
 #
 # usage: ynh_multimedia_build_main_dir
@@ -443,10 +441,10 @@ ynh_app_upstream_version () {
 	ynh_handle_getopts_args "$@"
 
 	manifest="${manifest:-../manifest.json}"
-	if [ ! -e "$manifest_path" ]; then
-		manifest_path="../settings/manifest.json"	# Into the restore script, the manifest is not at the same place
+	if [ ! -e "$manifest" ]; then
+		manifest="../settings/manifest.json"	# Into the restore script, the manifest is not at the same place
 	fi
-	version_key=$(ynh_read_manifest --manifest="$manifest_path" --manifest_key="version")
+	version_key=$(ynh_read_manifest --manifest="$manifest" --manifest_key="version")
 	echo "${version_key/~ynh*/}"
 }
 
@@ -465,10 +463,10 @@ ynh_app_package_version () {
 	ynh_handle_getopts_args "$@"
 
 	manifest="${manifest:-../manifest.json}"
-	if [ ! -e "$manifest_path" ]; then
-		manifest_path="../settings/manifest.json"	# Into the restore script, the manifest is not at the same place
+	if [ ! -e "$manifest" ]; then
+		manifest="../settings/manifest.json"	# Into the restore script, the manifest is not at the same place
 	fi
-	version_key=$(ynh_read_manifest --manifest="$manifest_path" --manifest_key="version")
+	version_key=$(ynh_read_manifest --manifest="$manifest" --manifest_key="version")
 	echo "${version_key/*~ynh/}"
 }
 
@@ -798,4 +796,64 @@ ynh_maintenance_mode_OFF () {
 	rm "/etc/nginx/conf.d/$domain.d/maintenance.$app.conf"
 
 	systemctl reload nginx
+}
+
+#=================================================
+
+# Download and check integrity of a file from app.src_file
+#
+# The file conf/app.src_file need to contains:
+#
+# FILE_URL=Address to download the file
+# FILE_SUM=Control sum
+# # (Optional) Program to check the integrity (sha256sum, md5sum...)
+# # default: sha256
+# FILE_SUM_PRG=sha256
+# # (Optionnal) Name of the local archive (offline setup support)
+# # default: Name of the downloaded file.
+# FILENAME=example.deb
+#
+# usage: ynh_download_file --dest_dir="/destination/directory" [--source_id=myfile]
+# | arg: -d, --dest_dir=  - Directory where to download the file
+# | arg: -s, --source_id= - Name of the source file 'app.src_file' if it isn't '$app'
+ynh_download_file () {
+	# Declare an array to define the options of this helper.
+	declare -Ar args_array=( [d]=dest_dir= [s]=source_id= )
+	local dest_dir
+	local source_id
+	# Manage arguments with getopts
+	ynh_handle_getopts_args "$@"
+
+	source_id=${source_id:-app} # If the argument is not given, source_id equals "$app"
+
+	# Load value from configuration file (see above for a small doc about this file
+	# format)
+	local file_url=$(grep 'FILE_URL=' "$YNH_CWD/../conf/${source_id}.src_file" | cut -d= -f2-)
+	local file_sum=$(grep 'FILE_SUM=' "$YNH_CWD/../conf/${source_id}.src_file" | cut -d= -f2-)
+	local file_sumprg=$(grep 'FILE_SUM_PRG=' "$YNH_CWD/../conf/${source_id}.src_file" | cut -d= -f2-)
+	local filename=$(grep 'FILENAME=' "$YNH_CWD/../conf/${source_id}.src_file" | cut -d= -f2-)
+
+	# Default value
+	file_sumprg=${file_sumprg:-sha256sum}
+	if [ "$filename" = "" ] ; then
+		filename="$(basename "$file_url")"
+	fi
+	local local_src="/opt/yunohost-apps-src/${YNH_APP_ID}/${filename}"
+
+	if test -e "$local_src"
+	then    # Use the local source file if it is present
+		cp $local_src $filename
+	else    # If not, download the source
+		local out=`wget -nv -O $filename $file_url 2>&1` || ynh_print_err $out
+	fi
+
+	# Check the control sum
+	echo "${file_sum} ${filename}" | ${file_sumprg} -c --status \
+		|| ynh_die "Corrupt file"
+
+	# Create the destination directory, if it's not already.
+	mkdir -p "$dest_dir"
+	
+	# Move the file to its destination
+	mv $filename $dest_dir
 }

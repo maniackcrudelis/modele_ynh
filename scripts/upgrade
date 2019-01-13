@@ -35,15 +35,17 @@ upgrade_type=$(ynh_check_app_version_changed)
 # ENSURE DOWNWARD COMPATIBILITY
 #=================================================
 
+# Fix is_public as a boolean
 if [ "$is_public" = "Yes" ]; then
-	ynh_app_setting_set $app is_public 1	# Fixe is_public en booléen
+	ynh_app_setting_set $app is_public 1
 	is_public=1
 elif [ "$is_public" = "No" ]; then
 	ynh_app_setting_set $app is_public 0
 	is_public=0
 fi
 
-if [ -z "$db_name" ]; then	# Si db_name n'est pas renseigné dans app setting
+# If db_name doesn't exist, create it
+if [ -z "$db_name" ]; then
 	db_name=$(ynh_sanitize_dbid $app)
 	ynh_app_setting_set $app db_name $db_name
 fi
@@ -55,7 +57,7 @@ fi
 # Backup the current version of the app
 ynh_backup_before_upgrade
 ynh_clean_setup () {
-	# restore it if the upgrade fails
+	# Restore it if the upgrade fails
 	ynh_restore_upgradebackup
 }
 # Exit if an error occurs during the execution of the script
@@ -65,7 +67,8 @@ ynh_abort_if_errors
 # CHECK THE PATH
 #=================================================
 
-path_url=$(ynh_normalize_url_path $path_url)	# Vérifie et corrige la syntaxe du path.
+# Normalize the URL path syntax
+path_url=$(ynh_normalize_url_path $path_url)
 
 #=================================================
 # ACTIVATE MAINTENANCE MODE
@@ -81,26 +84,36 @@ ynh_maintenance_mode_ON
 
 if [ "$upgrade_type" == "UPGRADE_APP" ]
 then
-	ynh_setup_source "$final_path"	# Télécharge la source, décompresse et copie dans $final_path
+	# Download, check integrity, uncompress and patch the source from app.src
+	ynh_setup_source "$final_path"
 fi
+
+#=================================================
+# UPGRADE DEPENDENCIES
+#=================================================
+
+ynh_install_app_dependencies $app_depencencies
 
 #=================================================
 # NGINX CONFIGURATION
 #=================================================
 
+# Create a dedicated nginx config
 ynh_add_nginx_config
 
 #=================================================
 # CREATE DEDICATED USER
 #=================================================
 
-ynh_system_user_create $app	# Create the dedicated user, if not exist
+# Create a dedicated user (if not existing)
+ynh_system_user_create $app
 
 #=================================================
 # PHP-FPM CONFIGURATION
 #=================================================
 
-ynh_add_fpm_config	# Créer le fichier de configuration du pool php-fpm et le configure.
+# Create a dedicated php-fpm config
+ynh_add_fpm_config
 
 #=================================================
 # SPECIFIC UPGRADE
@@ -108,20 +121,23 @@ ynh_add_fpm_config	# Créer le fichier de configuration du pool php-fpm et le co
 # ...
 #=================================================
 
-# Copie ou modification d'un fichier de config
-ynh_backup_if_checksum_is_different "$final_path/CONFIG_FILE"	# Créé un backup du fichier de config si il a été modifié.
-ynh_store_file_checksum "$final_path/CONFIG_FILE"	# Réenregistre la somme de contrôle du fichier de config
+# Verify the checksum of a file, stored by `ynh_store_file_checksum` in the install script.
+ynh_backup_if_checksum_is_different "$final_path/CONFIG_FILE"
+# Recalculate and store the checksum of the file for the next upgrade.
+ynh_store_file_checksum "$final_path/CONFIG_FILE"
 
 #=================================================
 # SETUP LOGROTATE
 #=================================================
 
+# Use logrotate to manage app-specific logfile(s)
 ynh_use_logrotate --non-append
 
 #=================================================
 # SETUP SYSTEMD
 #=================================================
 
+# Create a dedicated systemd config
 ynh_add_systemd_config
 
 #=================================================
@@ -130,13 +146,14 @@ ynh_add_systemd_config
 # UPGRADE FAIL2BAN
 #=================================================
 
-ynh_add_fail2ban_config "/var/log/nginx/${domain}-error.log" "PHP message: Leed: wrong login for .* client: <HOST>" 5
+# Create a dedicated fail2ban config
+ynh_add_fail2ban_config --logpath="/var/log/nginx/${domain}-error.log" --failregex="PHP message: Leed: wrong login for .* client: <HOST>" --max_retry=5
 
 #=================================================
-# SECURING FILES AND DIRECTORIES
+# SECURE FILES AND DIRECTORIES
 #=================================================
 
-# Les fichiers appartiennent à root
+# Set permissions on app files
 chown -R root: $final_path
 
 #=================================================
@@ -144,7 +161,8 @@ chown -R root: $final_path
 #=================================================
 
 if [ $is_public -eq 0 ]
-then	# Retire l'accès public
+then
+	# Remove the public access
 	ynh_app_setting_delete $app skipped_uris
 fi
 # Make app public if necessary

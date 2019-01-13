@@ -16,11 +16,12 @@ source _variables
 #=================================================
 
 ynh_clean_setup () {
-# Nettoyage des résidus d'installation non pris en charge par le script remove.
-# Pas de nettoyage supplémentaire nécessaire ici...
+# Clean installation remainings that are not handle by the remove script.
+# No extra clean needed here...
 	echo ""
 }
-ynh_abort_if_errors	# Active trap pour arrêter le script si une erreur est détectée.
+# Exit if an error occurs during the execution of the script
+ynh_abort_if_errors
 
 #=================================================
 # RETRIEVE ARGUMENTS FROM THE MANIFEST
@@ -62,8 +63,9 @@ ynh_app_setting_set $app is_public $is_public
 # FIND AND OPEN A PORT
 #=================================================
 
-port=$(ynh_find_port 8095)	# Cherche un port libre.
-# Ouvre le port dans le firewall
+# Find a free port
+port=$(ynh_find_port 8095)
+# Open this port
 ynh_exec_fully_quiet yunohost firewall allow --no-upnp TCP $port
 ynh_app_setting_set $app port $port
 
@@ -74,7 +76,7 @@ ynh_app_setting_set $app port $port
 ynh_install_app_dependencies $app_depencencies
 
 #=================================================
-# CREATE A SQL BDD
+# CREATE A MYSQL DATABASE
 #=================================================
 
 db_name=$(ynh_sanitize_dbid $app)
@@ -86,25 +88,29 @@ ynh_mysql_setup_db $db_name $db_name
 #=================================================
 
 ynh_app_setting_set $app final_path $final_path
-ynh_setup_source "$final_path"	# Télécharge la source, décompresse et copie dans $final_path
+# Download, check integrity and uncompress the source from app.src
+ynh_setup_source "$final_path"
 
 #=================================================
 # NGINX CONFIGURATION
 #=================================================
 
+# Create a dedicated nginx config
 ynh_add_nginx_config
 
 #=================================================
 # CREATE DEDICATED USER
 #=================================================
 
-ynh_system_user_create $app	# Créer un utilisateur système dédié à l'app
+# Create a dedicated system user
+ynh_system_user_create $app
 
 #=================================================
 # PHP-FPM CONFIGURATION
 #=================================================
 
-ynh_add_fpm_config	# Créer le fichier de configuration du pool php-fpm et le configure.
+# Create a dedicated php-fpm config
+ynh_add_fpm_config
 
 #=================================================
 # SPECIFIC SETUP
@@ -116,6 +122,7 @@ ynh_add_fpm_config	# Créer le fichier de configuration du pool php-fpm et le co
 # SETUP SYSTEMD
 #=================================================
 
+# Create a dedicated systemd config
 ynh_add_systemd_config
 
 #=================================================
@@ -125,14 +132,15 @@ ynh_add_systemd_config
 # Set right permissions for curl install
 chown -R $app: $final_path
 
-# Rend la page d'install publique pour curl
+# Set the app as temporarily public for curl call
 ynh_app_setting_set $app skipped_uris "/"
-yunohost app ssowatconf	# Régénère la configuration de SSOwat
+# Regen SSOwat configuration
+yunohost app ssowatconf
 
 # Reload Nginx
 ynh_system_reload --service_name=nginx
 
-# Installation via curl
+# Installation with curl
 ynh_local_curl "/INSTALL_PATH" "key1=value1" "key2=value2" "key3=value3"
 
 #=================================================
@@ -142,10 +150,11 @@ ynh_local_curl "/INSTALL_PATH" "key1=value1" "key2=value2" "key3=value3"
 ynh_replace_string "match_string" "replace_string" "$final_path/CONFIG_FILE"
 
 #=================================================
-# STORE THE CHECKSUM OF THE CONFIG FILE
+# STORE THE CONFIG FILE CHECKSUM
 #=================================================
 
-ynh_store_file_checksum "$final_path/CONFIG_FILE"	# Enregistre la somme de contrôle du fichier de config
+# Calculate and store the config file checksum into the app settings
+ynh_store_file_checksum "$final_path/CONFIG_FILE"
 
 #=================================================
 # GENERIC FINALISATION
@@ -153,23 +162,25 @@ ynh_store_file_checksum "$final_path/CONFIG_FILE"	# Enregistre la somme de contr
 # SECURING FILES AND DIRECTORIES
 #=================================================
 
-# Les fichiers appartiennent à root
+# Set permissions to app files
 chown -R root: $final_path
 
 #=================================================
 # SETUP FAIL2BAN
 #=================================================
 
-ynh_add_fail2ban_config "/var/log/nginx/${domain}-error.log" "PHP message: Leed: wrong login for .* client: <HOST>" 5
+# Create a dedicated fail2ban config
+ynh_add_fail2ban_config --logpath="/var/log/nginx/${domain}-error.log" --failregex="PHP message: Leed: wrong login for .* client: <HOST>" --max_retry=5
 
 #=================================================
 # SETUP LOGROTATE
 #=================================================
 
+# Use logrotate to manage application logfile(s)
 ynh_use_logrotate
 
 #=================================================
-# ENABLE SERVICE IN ADMIN PANEL
+# ADVERTISE SERVICE IN ADMIN PANEL
 #=================================================
 
 yunohost service add NAME_INIT.D --log "/var/log/FICHIER.log"
@@ -179,7 +190,8 @@ yunohost service add NAME_INIT.D --log "/var/log/FICHIER.log"
 #=================================================
 
 if [ $is_public -eq 0 ]
-then	# Retire l'accès public
+then
+	# Remove the public access
 	ynh_app_setting_delete $app skipped_uris
 fi
 # Make app public if necessary
@@ -198,6 +210,6 @@ ynh_systemd_action --action=reload --service_name=nginx
 # SEND A README FOR THE ADMIN
 #=================================================
 
-message="If you facing an issue or want to improve this app, please open a new issue in this project: https://github.com/YunoHost-Apps/modele_ynh"
+message="If you're facing an issue or want to improve this app, please open a new issue in this project: https://github.com/YunoHost-Apps/modele_ynh"
 
 ynh_send_readme_to_admin --app_message="$message" --recipients="$admin root"
