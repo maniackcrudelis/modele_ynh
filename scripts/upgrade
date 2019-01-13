@@ -29,10 +29,10 @@ db_name=$(ynh_app_setting_get $app db_name)
 # CHECK VERSION
 #=================================================
 
-ynh_abort_if_up_to_date
+upgrade_type=$(ynh_check_app_version_changed)
 
 #=================================================
-# FIX OLD THINGS
+# ENSURE DOWNWARD COMPATIBILITY
 #=================================================
 
 if [ "$is_public" = "Yes" ]; then
@@ -43,7 +43,7 @@ elif [ "$is_public" = "No" ]; then
 	is_public=0
 fi
 
-if [ -z $db_name ]; then	# Si db_name n'est pas renseigné dans app setting
+if [ -z "$db_name" ]; then	# Si db_name n'est pas renseigné dans app setting
 	db_name=$(ynh_sanitize_dbid $app)
 	ynh_app_setting_set $app db_name $db_name
 fi
@@ -68,12 +68,21 @@ ynh_abort_if_errors
 path_url=$(ynh_normalize_url_path $path_url)	# Vérifie et corrige la syntaxe du path.
 
 #=================================================
+# ACTIVATE MAINTENANCE MODE
+#=================================================
+
+ynh_maintenance_mode_ON
+
+#=================================================
 # STANDARD UPGRADE STEPS
 #=================================================
 # DOWNLOAD, CHECK AND UNPACK SOURCE
 #=================================================
 
-ynh_setup_source "$final_path"	# Télécharge la source, décompresse et copie dans $final_path
+if [ "$upgrade_type" == "UPGRADE_APP" ]
+then
+	ynh_setup_source "$final_path"	# Télécharge la source, décompresse et copie dans $final_path
+fi
 
 #=================================================
 # NGINX CONFIGURATION
@@ -118,6 +127,12 @@ ynh_add_systemd_config
 #=================================================
 # GENERIC FINALISATION
 #=================================================
+# UPGRADE FAIL2BAN
+#=================================================
+
+ynh_add_fail2ban_config "/var/log/nginx/${domain}-error.log" "PHP message: Leed: wrong login for .* client: <HOST>" 5
+
+#=================================================
 # SECURING FILES AND DIRECTORIES
 #=================================================
 
@@ -142,4 +157,10 @@ fi
 # RELOAD NGINX
 #=================================================
 
-systemctl reload nginx
+ynh_systemd_action --action=reload --service_name=nginx
+
+#=================================================
+# DEACTIVE MAINTENANCE MODE
+#=================================================
+
+ynh_maintenance_mode_OFF

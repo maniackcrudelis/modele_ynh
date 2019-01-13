@@ -6,12 +6,7 @@
 # IMPORT GENERIC HELPERS
 #=================================================
 
-if [ ! -e _common.sh ]; then
-	# Get the _common.sh file if it's not in the current directory
-	cp ../settings/scripts/_common.sh ./_common.sh
-	chmod a+rx _common.sh
-fi
-source _common.sh
+source ../settings/scripts/_common.sh
 source /usr/share/yunohost/helpers
 # Load common variables for all scripts.
 source ../settings/scripts/_variables
@@ -42,6 +37,12 @@ ynh_webpath_available $domain $path_url \
 	|| ynh_die "Path not available: ${domain}${path_url}"
 test ! -d $final_path \
 	|| ynh_die "There is already a directory: $final_path "
+
+#=================================================
+# ACTIVATE MAINTENANCE MODE
+#=================================================
+
+ynh_maintenance_mode_ON
 
 #=================================================
 # STANDARD RESTORE STEPS
@@ -86,6 +87,14 @@ ynh_restore_file "/etc/php5/fpm/pool.d/$app.conf"
 ynh_restore_file "/etc/php5/fpm/conf.d/20-$app.ini"
 
 #=================================================
+# RESTORE FAIL2BAN CONFIGURATION
+#=================================================
+
+ynh_restore_file "/etc/fail2ban/jail.d/$app.conf"
+ynh_restore_file "/etc/fail2ban/filter.d/$app.conf"
+ynh_systemd_action --action=restart --service_name=fail2ban
+
+#=================================================
 # SPECIFIC RESTORE
 #=================================================
 # REINSTALL DEPENDENCIES
@@ -125,8 +134,14 @@ ynh_restore_file "/etc/logrotate.d/$app"
 # RELOAD NGINX AND PHP-FPM
 #=================================================
 
-systemctl reload php5-fpm
-systemctl reload nginx
+ynh_systemd_action --action=reload --service_name=php5-fpm
+ynh_systemd_action --action=reload --service_name=nginx
+
+#=================================================
+# DEACTIVE MAINTENANCE MODE
+#=================================================
+
+ynh_maintenance_mode_OFF
 
 #=================================================
 # SEND A README FOR THE ADMIN
@@ -134,4 +149,4 @@ systemctl reload nginx
 
 message="If you facing an issue or want to improve this app, please open a new issue in this project: https://github.com/YunoHost-Apps/modele_ynh"
 
-ynh_send_readme_to_admin "$message" "$admin root"
+ynh_send_readme_to_admin --app_message="$message" --recipients="$admin root"

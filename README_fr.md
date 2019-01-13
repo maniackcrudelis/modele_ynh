@@ -1,6 +1,6 @@
 # APP pour YunoHost
 
-[![Niveau d'intégration](https://dash.yunohost.org/integration/APP.svg)](https://ci-apps.yunohost.org/jenkins/job/APP%20%28Community%29/lastBuild/consoleFull)  
+[![Niveau d'intégration](https://dash.yunohost.org/integration/APP.svg)](https://dash.yunohost.org/appci/app/APP)  
 [![Installer APP avec YunoHost](https://install-app.yunohost.org/install-with-yunohost.png)](https://install-app.yunohost.org/?app=APP)
 
 *[Read this readme in english.](./README.md)*
@@ -16,6 +16,10 @@ Description rapide...
 ## Captures d'écran
 
 ![](screenshot.png)
+
+## Démo
+
+Aucune démo pour cette application.
 
 ## Configuration
 
@@ -33,7 +37,9 @@ Supportée, avec LDAP et SSO.
 
 #### Architectures supportées.
 
-* Testé sur x86_64
+* x86-64b - [![](https://ci-apps.yunohost.org/ci/logs/APP%20%28Community%29.svg)](https://ci-apps.yunohost.org/ci/apps/APP/)
+* ARMv8-A - [![](https://ci-apps-arm.yunohost.org/ci/logs/APP%20%28Community%29.svg)](https://ci-apps-arm.yunohost.org/ci/apps/APP/)
+* Jessie x86-64b - [![](https://ci-stretch.nohost.me/ci/logs/APP%20%28Community%29.svg)](https://ci-stretch.nohost.me/ci/apps/APP/)
 
 ## Limitations
 

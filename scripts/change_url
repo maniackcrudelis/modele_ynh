@@ -25,7 +25,7 @@ app=$YNH_APP_INSTANCE_NAME
 # LOAD SETTINGS
 #=================================================
 
-# appname=$(ynh_app_setting_get $app appname)
+final_path=$(ynh_app_setting_get $app final_path)
 
 #=================================================
 # CHECK THE SYNTAX OF THE PATHS
@@ -39,6 +39,14 @@ old_path=$(ynh_normalize_url_path $old_path)
 echo "old_path=$old_path" >&2	## DEBUG
 echo "new_path=$new_path" >&2	## DEBUG
 echo "-" >&2	## DEBUG
+
+#=================================================
+# ACTIVATE MAINTENANCE MODE
+#=================================================
+
+path_url=$old_path
+domain=$old_domain
+ynh_maintenance_mode_ON
 
 #=================================================
 # CHECK WHICH PARTS SHOULD BE CHANGED
@@ -77,16 +85,15 @@ then
 	# Make a backup of the original nginx config file if modified
 	ynh_backup_if_checksum_is_different "$nginx_conf_path"
 
-	# Replace locations starting with old_path
-	# Look for every location possible patterns (see https://nginx.org/en/docs/http/ngx_http_core_module.html#location)
-	ynh_replace_string "location\( \(=\|~\|~\*\|\^~\)\)\? $old_path" "location\1 $new_path"  "$nginx_conf_path"
-	# Replace path in "return" directives
-	ynh_replace_string "return \([[:digit:]]\{3\}\) $old_path" "return \1 $new_path"  "$nginx_conf_path"
+	# Set global variables for nginx helper
+	domain="$old_domain"
+	path_url="$new_path"
 
-	ynh_replace_string "location $old_path" "location $new_path" "$nginx_conf_path"
+	# Store path_url setting
+	ynh_app_setting_set $app path "$path_url"
 
-	# Calculate and store the nginx config file checksum
-	ynh_store_file_checksum "$nginx_conf_path"
+	# Create a dedicated nginx config
+	ynh_add_nginx_config
 fi
 
 # Change the domain for nginx
@@ -96,9 +103,8 @@ then
 	ynh_delete_file_checksum "$nginx_conf_path"
 	mv $nginx_conf_path /etc/nginx/conf.d/$new_domain.d/$app.conf
 
-	nginx_conf_path=/etc/nginx/conf.d/$new_domain.d/$app.conf
-	# Calculate and store the nginx config file checksum
-	ynh_store_file_checksum "$nginx_conf_path"
+	# Store file checksum for the new config file location
+	ynh_store_file_checksum "/etc/nginx/conf.d/$new_domain.d/$app.conf"
 fi
 
 #=================================================
@@ -122,4 +128,12 @@ echo "-" >&2	## DEBUG
 
 cat "$nginx_conf_path" >&2	## DEBUG
 
-systemctl reload nginx
+ynh_systemd_action --action=reload --service_name=nginx
+
+#=================================================
+# DEACTIVE MAINTENANCE MODE
+#=================================================
+
+path_url=$old_path
+domain=$old_domain
+ynh_maintenance_mode_OFF
