@@ -19,6 +19,7 @@ ynh_abort_if_errors
 #=================================================
 # LOAD SETTINGS
 #=================================================
+ynh_script_progression --message="Load settings" --time
 
 app=$YNH_APP_INSTANCE_NAME
 
@@ -32,6 +33,7 @@ db_pwd=$(ynh_app_setting_get $app mysqlpwd)
 #=================================================
 # BACKUP THE APP MAIN DIR
 #=================================================
+ynh_script_progression --message="Backup the app main dir" --time --weight=2
 
 CHECK_SIZE "$final_path"
 ynh_backup "$final_path"
@@ -39,18 +41,21 @@ ynh_backup "$final_path"
 #=================================================
 # BACKUP NGINX CONFIGURATION
 #=================================================
+ynh_script_progression --message="Backup nginx configuration" --time
 
 ynh_backup "/etc/nginx/conf.d/$domain.d/$app.conf"
 
 #=================================================
 # BACKUP PHP-FPM CONFIGURATION
 #=================================================
+ynh_script_progression --message="Backup php-fpm configuration" --time
 
-ynh_backup "/etc/php5/fpm/pool.d/$app.conf"
+ynh_backup "/etc/php/7.0/fpm/pool.d/$app.conf"
 
 #=================================================
 # BACKUP THE MYSQL DATABASE
 #=================================================
+ynh_script_progression --message="Backup the mysql database" --time
 
 ynh_mysql_dump_db "$db_name" > db.sql
 CHECK_SIZE "db.sql"
@@ -58,6 +63,7 @@ CHECK_SIZE "db.sql"
 #=================================================
 # BACKUP FAIL2BAN CONFIGURATION
 #=================================================
+ynh_script_progression --message="Backup fail2ban configuration" --time
 
 ynh_backup "/etc/fail2ban/jail.d/$app.conf"
 ynh_backup "/etc/fail2ban/filter.d/$app.conf"
@@ -67,17 +73,26 @@ ynh_backup "/etc/fail2ban/filter.d/$app.conf"
 #=================================================
 # BACKUP LOGROTATE
 #=================================================
+ynh_script_progression --message="Backup logrotate configuration" --time
 
 ynh_backup "/etc/logrotate.d/$app"
 
 #=================================================
 # BACKUP SYSTEMD
 #=================================================
+ynh_script_progression --message="Backup systemd configuration" --time
 
 ynh_backup "/etc/systemd/system/$app.service"
 
 #=================================================
 # BACKUP A CRON FILE
 #=================================================
+ynh_script_progression --message="Backup cron file" --time
 
 ynh_backup "/etc/cron.d/$app"
+
+#=================================================
+# END OF SCRIPT
+#=================================================
+
+ynh_script_progression --message="Backup completed" --last --time

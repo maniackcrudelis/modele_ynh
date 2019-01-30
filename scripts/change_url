@@ -12,6 +12,7 @@ source /usr/share/yunohost/helpers
 #=================================================
 # RETRIEVE ARGUMENTS
 #=================================================
+ynh_script_progression --message="Retrieve arguments from the manifest" --time
 
 old_domain=$YNH_APP_OLD_DOMAIN
 old_path=$YNH_APP_OLD_PATH
@@ -24,12 +25,14 @@ app=$YNH_APP_INSTANCE_NAME
 #=================================================
 # LOAD SETTINGS
 #=================================================
+ynh_script_progression --message="Load settings" --time
 
 final_path=$(ynh_app_setting_get $app final_path)
 
 #=================================================
 # CHECK THE SYNTAX OF THE PATHS
 #=================================================
+ynh_script_progression --message="Check the syntax of the paths" --time
 
 test -n "$old_path" || old_path="/"
 test -n "$new_path" || new_path="/"
@@ -43,6 +46,7 @@ echo "-" >&2	## DEBUG
 #=================================================
 # ACTIVATE MAINTENANCE MODE
 #=================================================
+ynh_script_progression --message="Activate maintenance mode" --time
 
 path_url=$old_path
 domain=$old_domain
@@ -76,6 +80,7 @@ ynh_abort_if_errors
 #=================================================
 # MODIFY URL IN NGINX CONF
 #=================================================
+ynh_script_progression --message="Modify url in nginx configuration" --time
 
 nginx_conf_path=/etc/nginx/conf.d/$old_domain.d/$app.conf
 
@@ -110,6 +115,7 @@ fi
 #=================================================
 # UPDATE SSOWAT
 #=================================================
+ynh_script_progression --message="Reconfigure SSOwat" --time
 
 sudo cat "/etc/yunohost/apps/$app/settings.yml" >&2	## DEBUG
 echo "-" >&2	## DEBUG
@@ -125,6 +131,7 @@ echo "-" >&2	## DEBUG
 #=================================================
 # RELOAD NGINX
 #=================================================
+ynh_script_progression --message="Reload nginx" --time
 
 cat "$nginx_conf_path" >&2	## DEBUG
 
@@ -133,7 +140,14 @@ ynh_systemd_action --action=reload --service_name=nginx
 #=================================================
 # DEACTIVE MAINTENANCE MODE
 #=================================================
+ynh_script_progression --message="Deactive maintenance mode" --time
 
 path_url=$old_path
 domain=$old_domain
 ynh_maintenance_mode_OFF
+
+#=================================================
+# END OF SCRIPT
+#=================================================
+
+ynh_script_progression --message="Change of url completed" --last --time

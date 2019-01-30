@@ -3,5 +3,5 @@
 # Dependencies
 app_depencencies="dep1 dep2"
 
-# Version of nodejs
+# NodeJS version
 nodejs_version=4

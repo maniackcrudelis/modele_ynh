@@ -16,7 +16,7 @@ source _variables
 #=================================================
 
 ynh_clean_setup () {
-# Clean installation remainings that are not handle by the remove script.
+# Clean installation remaining that are not handle by the remove script.
 # No extra clean needed here...
 	echo ""
 }
@@ -26,6 +26,7 @@ ynh_abort_if_errors
 #=================================================
 # RETRIEVE ARGUMENTS FROM THE MANIFEST
 #=================================================
+ynh_script_progression --message="Retrieve arguments from the manifest" --time
 
 domain=$YNH_APP_ARG_DOMAIN
 path_url=$YNH_APP_ARG_PATH
@@ -38,6 +39,7 @@ app=$YNH_APP_INSTANCE_NAME
 #=================================================
 # CHECK IF THE APP CAN BE INSTALLED WITH THESE ARGS
 #=================================================
+ynh_script_progression --message="Check if the app can be installed" --time
 
 final_path=/var/www/$app
 test ! -e "$final_path" || ynh_die "This path already contains a folder"
@@ -51,17 +53,22 @@ ynh_webpath_register $app $domain $path_url
 #=================================================
 # STORE SETTINGS FROM MANIFEST
 #=================================================
+ynh_script_progression --message="Store settings from manifest" --time
 
 ynh_app_setting_set $app domain $domain
 ynh_app_setting_set $app path $path_url
 ynh_app_setting_set $app admin $admin
 ynh_app_setting_set $app is_public $is_public
+ynh_app_setting_set $app overwrite_nginx "1"
+ynh_app_setting_set $app overwrite_phpfpm "1"
+ynh_app_setting_set $app admin_mail_html "1"
 
 #=================================================
 # STANDARD MODIFICATIONS
 #=================================================
 # FIND AND OPEN A PORT
 #=================================================
+ynh_script_progression --message="Find and open a port" --time
 
 # Find a free port
 port=$(ynh_find_port 8095)
@@ -72,12 +79,14 @@ ynh_app_setting_set $app port $port
 #=================================================
 # INSTALL DEPENDENCIES
 #=================================================
+ynh_script_progression --message="Install dependencies" --time --weight=2
 
 ynh_install_app_dependencies $app_depencencies
 
 #=================================================
 # CREATE A MYSQL DATABASE
 #=================================================
+ynh_script_progression --message="Create a mysql database" --time
 
 db_name=$(ynh_sanitize_dbid $app)
 ynh_app_setting_set $app db_name $db_name
@@ -86,6 +95,7 @@ ynh_mysql_setup_db $db_name $db_name
 #=================================================
 # DOWNLOAD, CHECK AND UNPACK SOURCE
 #=================================================
+ynh_script_progression --message="Download, check and unpack source" --time --weight=2
 
 ynh_app_setting_set $app final_path $final_path
 # Download, check integrity and uncompress the source from app.src
@@ -94,6 +104,7 @@ ynh_setup_source "$final_path"
 #=================================================
 # NGINX CONFIGURATION
 #=================================================
+ynh_script_progression --message="Configure nginx" --time
 
 # Create a dedicated nginx config
 ynh_add_nginx_config
@@ -101,6 +112,7 @@ ynh_add_nginx_config
 #=================================================
 # CREATE DEDICATED USER
 #=================================================
+ynh_script_progression --message="Create a dedicated user" --time
 
 # Create a dedicated system user
 ynh_system_user_create $app
@@ -108,6 +120,7 @@ ynh_system_user_create $app
 #=================================================
 # PHP-FPM CONFIGURATION
 #=================================================
+ynh_script_progression --message="Configure php-fpm" --time
 
 # Create a dedicated php-fpm config
 ynh_add_fpm_config
@@ -121,6 +134,7 @@ ynh_add_fpm_config
 #=================================================
 # SETUP SYSTEMD
 #=================================================
+ynh_script_progression --message="Configure systemd" --time
 
 # Create a dedicated systemd config
 ynh_add_systemd_config
@@ -128,6 +142,7 @@ ynh_add_systemd_config
 #=================================================
 # SETTING UP WITH CURL
 #=================================================
+ynh_script_progression --message="Install APP with Curl" --time --weight=2
 
 # Set right permissions for curl install
 chown -R $app: $final_path
@@ -138,7 +153,7 @@ ynh_app_setting_set $app skipped_uris "/"
 yunohost app ssowatconf
 
 # Reload Nginx
-ynh_system_reload --service_name=nginx
+ynh_systemd_action --action=reload --service_name=nginx
 
 # Installation with curl
 ynh_local_curl "/INSTALL_PATH" "key1=value1" "key2=value2" "key3=value3"
@@ -146,6 +161,7 @@ ynh_local_curl "/INSTALL_PATH" "key1=value1" "key2=value2" "key3=value3"
 #=================================================
 # MODIFY A CONFIG FILE
 #=================================================
+ynh_script_progression --message="Configure APP" --time
 
 ynh_replace_string "match_string" "replace_string" "$final_path/CONFIG_FILE"
 
@@ -168,6 +184,7 @@ chown -R root: $final_path
 #=================================================
 # SETUP FAIL2BAN
 #=================================================
+ynh_script_progression --message="Configure fail2ban" --time --weight=2
 
 # Create a dedicated fail2ban config
 ynh_add_fail2ban_config --logpath="/var/log/nginx/${domain}-error.log" --failregex="PHP message: Leed: wrong login for .* client: <HOST>" --max_retry=5
@@ -175,6 +192,7 @@ ynh_add_fail2ban_config --logpath="/var/log/nginx/${domain}-error.log" --failreg
 #=================================================
 # SETUP LOGROTATE
 #=================================================
+ynh_script_progression --message="Configure logrotate" --time
 
 # Use logrotate to manage application logfile(s)
 ynh_use_logrotate
@@ -188,6 +206,7 @@ yunohost service add NAME_INIT.D --log "/var/log/FICHIER.log"
 #=================================================
 # SETUP SSOWAT
 #=================================================
+ynh_script_progression --message="Setup SSOwat" --time
 
 if [ $is_public -eq 0 ]
 then
@@ -203,6 +222,7 @@ fi
 #=================================================
 # RELOAD NGINX
 #=================================================
+ynh_script_progression --message="Reload nginx" --time
 
 ynh_systemd_action --action=reload --service_name=nginx
 
@@ -210,6 +230,18 @@ ynh_systemd_action --action=reload --service_name=nginx
 # SEND A README FOR THE ADMIN
 #=================================================
 
-message="If you're facing an issue or want to improve this app, please open a new issue in this project: https://github.com/YunoHost-Apps/modele_ynh"
+# Get main domain and buid the url of the admin panel of the app.
+admin_panel="https://$(grep portal_domain /etc/ssowat/conf.json | cut -d'"' -f4)/yunohost/admin/#/apps/$app"
 
-ynh_send_readme_to_admin --app_message="$message" --recipients="$admin root"
+echo "You can configure this app easily by using the experimental __URL_TAG1__config-panel feature__URL_TAG2__$admin_panel/config-panel__URL_TAG3__.
+You can also find some specific actions for this app by using the experimental __URL_TAG1__action feature__URL_TAG2__$admin_panel/actions__URL_TAG3__.
+
+If you're facing an issue or want to improve this app, please open a new issue in this __URL_TAG1__project__URL_TAG2__https://github.com/YunoHost-Apps/leed_ynh__URL_TAG3__." > mail_to_send
+
+ynh_send_readme_to_admin --app_message="mail_to_send" --recipients="root" --type="install"
+
+#=================================================
+# END OF SCRIPT
+#=================================================
+
+ynh_script_progression --message="Installation completed" --last --time

@@ -14,6 +14,7 @@ source _variables
 #=================================================
 # LOAD SETTINGS
 #=================================================
+ynh_script_progression --message="Load settings" --time
 
 app=$YNH_APP_INSTANCE_NAME
 
@@ -24,6 +25,9 @@ is_public=$(ynh_app_setting_get $app is_public)
 final_path=$(ynh_app_setting_get $app final_path)
 port=$(ynh_app_setting_get $app port)
 db_name=$(ynh_app_setting_get $app db_name)
+overwrite_nginx=$(ynh_app_setting_get $app overwrite_nginx)
+overwrite_phpfpm=$(ynh_app_setting_get $app overwrite_phpfpm)
+admin_mail_html=$(ynh_app_setting_get $app admin_mail_html)
 
 #=================================================
 # CHECK VERSION
@@ -34,6 +38,7 @@ upgrade_type=$(ynh_check_app_version_changed)
 #=================================================
 # ENSURE DOWNWARD COMPATIBILITY
 #=================================================
+ynh_script_progression --message="Ensure downward compatibility" --time
 
 # Fix is_public as a boolean
 if [ "$is_public" = "Yes" ]; then
@@ -50,9 +55,28 @@ if [ -z "$db_name" ]; then
 	ynh_app_setting_set $app db_name $db_name
 fi
 
+# If overwrite_nginx doesn't exist, create it
+if [ -z "$overwrite_nginx" ]; then
+	overwrite_nginx=1
+	ynh_app_setting_set $app overwrite_nginx $overwrite_nginx
+fi
+
+# If overwrite_phpfpm doesn't exist, create it
+if [ -z "$overwrite_phpfpm" ]; then
+	overwrite_phpfpm=1
+	ynh_app_setting_set $app overwrite_phpfpm $overwrite_phpfpm
+fi
+
+# If admin_mail_html doesn't exist, create it
+if [ -z "$admin_mail_html" ]; then
+	admin_mail_html=1
+	ynh_app_setting_set $app admin_mail_html $admin_mail_html
+fi
+
 #=================================================
 # BACKUP BEFORE UPGRADE THEN ACTIVE TRAP
 #=================================================
+ynh_script_progression --message="Backup the app before upgrading" --time
 
 # Backup the current version of the app
 ynh_backup_before_upgrade
@@ -73,6 +97,7 @@ path_url=$(ynh_normalize_url_path $path_url)
 #=================================================
 # ACTIVATE MAINTENANCE MODE
 #=================================================
+ynh_script_progression --message="Activate maintenance mode" --time
 
 ynh_maintenance_mode_ON
 
@@ -84,6 +109,7 @@ ynh_maintenance_mode_ON
 
 if [ "$upgrade_type" == "UPGRADE_APP" ]
 then
+	ynh_script_progression --message="Download, check and unpack source" --time --weight=2
 	# Download, check integrity, uncompress and patch the source from app.src
 	ynh_setup_source "$final_path"
 fi
@@ -91,12 +117,14 @@ fi
 #=================================================
 # UPGRADE DEPENDENCIES
 #=================================================
+ynh_script_progression --message="Upgrade dependencies" --time --weight=2
 
 ynh_install_app_dependencies $app_depencencies
 
 #=================================================
 # NGINX CONFIGURATION
 #=================================================
+ynh_script_progression --message="Reconfigure nginx" --time
 
 # Create a dedicated nginx config
 ynh_add_nginx_config
@@ -104,6 +132,7 @@ ynh_add_nginx_config
 #=================================================
 # CREATE DEDICATED USER
 #=================================================
+ynh_script_progression --message="Create a dedicated user" --time
 
 # Create a dedicated user (if not existing)
 ynh_system_user_create $app
@@ -111,6 +140,7 @@ ynh_system_user_create $app
 #=================================================
 # PHP-FPM CONFIGURATION
 #=================================================
+ynh_script_progression --message="Reconfigure php-fpm" --time
 
 # Create a dedicated php-fpm config
 ynh_add_fpm_config
@@ -120,6 +150,7 @@ ynh_add_fpm_config
 #=================================================
 # ...
 #=================================================
+ynh_script_progression --message="Reconfigure APP" --time
 
 # Verify the checksum of a file, stored by `ynh_store_file_checksum` in the install script.
 ynh_backup_if_checksum_is_different "$final_path/CONFIG_FILE"
@@ -129,6 +160,7 @@ ynh_store_file_checksum "$final_path/CONFIG_FILE"
 #=================================================
 # SETUP LOGROTATE
 #=================================================
+ynh_script_progression --message="Reconfigure logrotate" --time
 
 # Use logrotate to manage app-specific logfile(s)
 ynh_use_logrotate --non-append
@@ -136,6 +168,7 @@ ynh_use_logrotate --non-append
 #=================================================
 # SETUP SYSTEMD
 #=================================================
+ynh_script_progression --message="Reconfigure systemd" --time
 
 # Create a dedicated systemd config
 ynh_add_systemd_config
@@ -145,6 +178,7 @@ ynh_add_systemd_config
 #=================================================
 # UPGRADE FAIL2BAN
 #=================================================
+ynh_script_progression --message="Reconfigure fail2ban" --time --weight=2
 
 # Create a dedicated fail2ban config
 ynh_add_fail2ban_config --logpath="/var/log/nginx/${domain}-error.log" --failregex="PHP message: Leed: wrong login for .* client: <HOST>" --max_retry=5
@@ -159,6 +193,7 @@ chown -R root: $final_path
 #=================================================
 # SETUP SSOWAT
 #=================================================
+ynh_script_progression --message="Reconfigure SSOwat" --time
 
 if [ $is_public -eq 0 ]
 then
@@ -174,11 +209,41 @@ fi
 #=================================================
 # RELOAD NGINX
 #=================================================
+ynh_script_progression --message="Reload nginx" --time
 
 ynh_systemd_action --action=reload --service_name=nginx
 
 #=================================================
 # DEACTIVE MAINTENANCE MODE
 #=================================================
+ynh_script_progression --message="Deactive maintenance mode" --time
 
 ynh_maintenance_mode_OFF
+
+#=================================================
+# SEND A README FOR THE ADMIN
+#=================================================
+
+# Get main domain and buid the url of the admin panel of the app.
+admin_panel="https://$(grep portal_domain /etc/ssowat/conf.json | cut -d'"' -f4)/yunohost/admin/#/apps/$app"
+
+# Build the changelog
+ynh_app_changelog || true
+
+echo "You can configure this app easily by using the experimental __URL_TAG1__config-panel feature__URL_TAG2__$admin_panel/config-panel__URL_TAG3__.
+You can also find some specific actions for this app by using the experimental __URL_TAG1__action feature__URL_TAG2__$admin_panel/actions__URL_TAG3__.
+
+If you're facing an issue or want to improve this app, please open a new issue in this __URL_TAG1__project__URL_TAG2__https://github.com/YunoHost-Apps/modele_ynh__URL_TAG3__.
+
+---
+
+Changelog since your last upgrade:
+$(cat changelog)" > mail_to_send
+
+ynh_send_readme_to_admin --app_message="mail_to_send" --recipients="root" --type="upgrade"
+
+#=================================================
+# END OF SCRIPT
+#=================================================
+
+ynh_script_progression --message="Upgrade completed" --last --time

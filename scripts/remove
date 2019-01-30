@@ -12,6 +12,7 @@ source /usr/share/yunohost/helpers
 #=================================================
 # LOAD SETTINGS
 #=================================================
+ynh_script_progression --message="Load settings" --time
 
 app=$YNH_APP_INSTANCE_NAME
 
@@ -24,6 +25,7 @@ db_name=$(ynh_app_setting_get $app db_name)
 #=================================================
 # STOP AND REMOVE SERVICE
 #=================================================
+ynh_script_progression --message="Stop and remove the service" --time
 
 # Remove the dedicated systemd config
 ynh_remove_systemd_config
@@ -42,6 +44,7 @@ fi
 #=================================================
 # REMOVE DEPENDENCIES
 #=================================================
+ynh_script_progression --message="Remove dependencies" --time --weight=2
 
 # Remove metapackage and its dependencies
 ynh_remove_app_dependencies
@@ -49,6 +52,7 @@ ynh_remove_app_dependencies
 #=================================================
 # REMOVE THE MYSQL DATABASE
 #=================================================
+ynh_script_progression --message="Remove the mysql database" --time
 
 # Remove a database if it exists, along with the associated user
 ynh_mysql_remove_db $db_name $db_name
@@ -56,6 +60,7 @@ ynh_mysql_remove_db $db_name $db_name
 #=================================================
 # REMOVE APP MAIN DIR
 #=================================================
+ynh_script_progression --message="Remove app main directory" --time
 
 # Remove the app directory securely
 ynh_secure_remove "/var/www/$app"
@@ -63,6 +68,7 @@ ynh_secure_remove "/var/www/$app"
 #=================================================
 # REMOVE NGINX CONFIGURATION
 #=================================================
+ynh_script_progression --message="Remove nginx configuration" --time
 
 # Remove the dedicated nginx config
 ynh_remove_nginx_config
@@ -70,6 +76,7 @@ ynh_remove_nginx_config
 #=================================================
 # REMOVE PHP-FPM CONFIGURATION
 #=================================================
+ynh_script_progression --message="Remove php-fpm configuration" --time
 
 # Remove the dedicated php-fpm config
 ynh_remove_fpm_config
@@ -77,6 +84,7 @@ ynh_remove_fpm_config
 #=================================================
 # REMOVE FAIL2BAN CONFIGURATION
 #=================================================
+ynh_script_progression --message="Remove fail2ban configuration" --time
 
 # Remove the dedicated fail2ban config
 ynh_remove_fail2ban_config
@@ -84,6 +92,7 @@ ynh_remove_fail2ban_config
 #=================================================
 # REMOVE LOGROTATE CONFIGURATION
 #=================================================
+ynh_script_progression --message="Remove logrotate configuration" --time
 
 # Remove the app-specific logrotate config
 ynh_remove_logrotate
@@ -117,6 +126,13 @@ ynh_secure_remove "/var/log/$app/"
 #=================================================
 # REMOVE DEDICATED USER
 #=================================================
+ynh_script_progression --message="Remove the dedicated user" --time
 
 # Delete dedicated system user
 ynh_system_user_delete $app
+
+#=================================================
+# END OF SCRIPT
+#=================================================
+
+ynh_script_progression --message="Deletion completed" --last --time
