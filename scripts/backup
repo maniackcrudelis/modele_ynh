@@ -19,7 +19,7 @@ ynh_abort_if_errors
 #=================================================
 # LOAD SETTINGS
 #=================================================
-ynh_script_progression --message="Load settings" --time
+ynh_script_progression --message="Load settings" --time --weight=2
 
 app=$YNH_APP_INSTANCE_NAME
 
@@ -55,7 +55,7 @@ ynh_backup "/etc/php/7.0/fpm/pool.d/$app.conf"
 #=================================================
 # BACKUP THE MYSQL DATABASE
 #=================================================
-ynh_script_progression --message="Backup the mysql database" --time
+ynh_script_progression --message="Backup the mysql database" --time --weight=2
 
 ynh_mysql_dump_db "$db_name" > db.sql
 CHECK_SIZE "db.sql"

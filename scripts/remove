@@ -12,7 +12,7 @@ source /usr/share/yunohost/helpers
 #=================================================
 # LOAD SETTINGS
 #=================================================
-ynh_script_progression --message="Load settings" --time
+ynh_script_progression --message="Load settings" --time --weight=2
 
 app=$YNH_APP_INSTANCE_NAME
 
@@ -68,7 +68,7 @@ ynh_secure_remove "/var/www/$app"
 #=================================================
 # REMOVE NGINX CONFIGURATION
 #=================================================
-ynh_script_progression --message="Remove nginx configuration" --time
+ynh_script_progression --message="Remove nginx configuration" --time --weight=2
 
 # Remove the dedicated nginx config
 ynh_remove_nginx_config
@@ -84,7 +84,7 @@ ynh_remove_fpm_config
 #=================================================
 # REMOVE FAIL2BAN CONFIGURATION
 #=================================================
-ynh_script_progression --message="Remove fail2ban configuration" --time
+ynh_script_progression --message="Remove fail2ban configuration" --time --weight=5
 
 # Remove the dedicated fail2ban config
 ynh_remove_fail2ban_config
@@ -100,6 +100,7 @@ ynh_remove_logrotate
 #=================================================
 # CLOSE A PORT
 #=================================================
+ynh_script_progression --message="Close ports" --time
 
 if yunohost firewall list | grep -q "\- $port$"
 then
@@ -126,7 +127,7 @@ ynh_secure_remove "/var/log/$app/"
 #=================================================
 # REMOVE DEDICATED USER
 #=================================================
-ynh_script_progression --message="Remove the dedicated user" --time
+ynh_script_progression --message="Remove the dedicated user" --time --weight=2
 
 # Delete dedicated system user
 ynh_system_user_delete $app

@@ -25,7 +25,7 @@ app=$YNH_APP_INSTANCE_NAME
 #=================================================
 # LOAD SETTINGS
 #=================================================
-ynh_script_progression --message="Load settings" --time
+ynh_script_progression --message="Load settings" --time --weight=2
 
 final_path=$(ynh_app_setting_get $app final_path)
 
@@ -80,7 +80,7 @@ ynh_abort_if_errors
 #=================================================
 # MODIFY URL IN NGINX CONF
 #=================================================
-ynh_script_progression --message="Modify url in nginx configuration" --time
+ynh_script_progression --message="Modify url in nginx configuration" --time --weight=2
 
 nginx_conf_path=/etc/nginx/conf.d/$old_domain.d/$app.conf
 
@@ -140,7 +140,7 @@ ynh_systemd_action --action=reload --service_name=nginx
 #=================================================
 # DEACTIVE MAINTENANCE MODE
 #=================================================
-ynh_script_progression --message="Deactive maintenance mode" --time
+ynh_script_progression --message="Disable maintenance mode" --time
 
 path_url=$old_path
 domain=$old_domain
